@@ -131,6 +131,7 @@ export async function initDatabase() {
 
   const userCount = (await db.prepare("SELECT COUNT(*) AS count FROM users").get()).count;
   if (Number(userCount) === 0) await seedDatabase();
+  await seedDevelopmentPlatformOwner();
 }
 
 export async function checkDatabaseConnection() {
@@ -569,6 +570,61 @@ async function seedDatabase() {
   await addService.run("ניקוי עור עמוק", 2, 90, 320);
   await addService.run("איפור קבוע לשפתיים", 4, 120, 600);
   await addService.run("צביעת שיער", 3, 120, 350);
+}
+
+async function seedDevelopmentPlatformOwner() {
+  if (process.env.NODE_ENV !== "development") return;
+
+  await db.prepare(`
+    UPDATE users
+    SET is_platform_owner = 0
+    WHERE tenant_id = ? AND username = ?
+  `).run(1, "admin");
+
+  const existing = await db.prepare(`
+    SELECT id
+    FROM users
+    WHERE tenant_id = ? AND username = ?
+    LIMIT 1
+  `).get(1, "owner");
+
+  if (existing) {
+    await db.prepare(`
+      UPDATE users
+      SET email = ?, name = ?, title = ?, role = ?, workdays = ?, service_ids = ?,
+          is_platform_owner = 1, active = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      "owner@clinova.local",
+      "Clinova Platform Owner",
+      "Platform owner",
+      "admin",
+      "[]",
+      "[]",
+      existing.id,
+    );
+    return;
+  }
+
+  await db.prepare(`
+    INSERT INTO users (
+      tenant_id, username, email, password_hash, name, title, role,
+      workdays, service_ids, is_platform_owner, active
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    1,
+    "owner",
+    "owner@clinova.local",
+    hashPassword("ChangeMe123!"),
+    "Clinova Platform Owner",
+    "Platform owner",
+    "admin",
+    "[]",
+    "[]",
+    1,
+    1,
+  );
 }
 
 export async function findLoginUser(identifier, tenant = "") {

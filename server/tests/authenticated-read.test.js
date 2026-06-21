@@ -67,16 +67,18 @@ const readExpectations = {
 
 let clinicServer;
 let platformServer;
+let developmentServer;
 
 before(async () => {
-  [clinicServer, platformServer] = await Promise.all([
+  [clinicServer, platformServer, developmentServer] = await Promise.all([
     startTestServer(),
     startTestServer({ initializationRuns: 2 }),
+    startTestServer({ envOverrides: { NODE_ENV: "development" } }),
   ]);
 });
 
 after(async () => {
-  await Promise.all([clinicServer?.stop(), platformServer?.stop()]);
+  await Promise.all([clinicServer?.stop(), platformServer?.stop(), developmentServer?.stop()]);
 });
 
 test("clinic roles can login and /api/me preserves their identity", async () => {
@@ -102,6 +104,22 @@ test("platform owner can login and /api/me exposes platform ownership", async ()
   assert.equal(me.status, 200);
   assert.equal(me.body.user.username, "admin");
   assert.equal(me.body.user.platformOwner, true);
+});
+
+test("development seed provides a dedicated platform owner without elevating clinic admin", async () => {
+  const { response: adminLogin } = await loginAs(developmentServer.baseUrl, "admin");
+  assert.equal(adminLogin.status, 200);
+  assert.equal(adminLogin.body.user.platformOwner, false);
+
+  const { client: ownerClient, response: ownerLogin } = await loginAs(developmentServer.baseUrl, "owner");
+  assert.equal(ownerLogin.status, 200);
+  assert.equal(ownerLogin.body.user.username, "owner");
+  assert.equal(ownerLogin.body.user.role, "admin");
+  assert.equal(ownerLogin.body.user.platformOwner, true);
+
+  const health = await ownerClient.get("/api/platform/health");
+  assert.equal(health.status, 200);
+  assert.equal(health.body.api.ok, true);
 });
 
 test("bootstrap preserves role visibility and platform tenant visibility", async () => {
