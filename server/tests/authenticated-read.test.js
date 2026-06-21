@@ -158,6 +158,39 @@ test("platform tenant read access remains separated from clinic and unauthentica
   assert.ok(response.body.tenants.length > 0);
 });
 
+test("platform health is visible only to the platform owner", async () => {
+  const unauthenticated = createHttpClient(clinicServer.baseUrl);
+  assert.equal((await unauthenticated.get("/api/platform/health")).status, 401);
+
+  for (const [role, username] of Object.entries(clinicRoles)) {
+    const { client } = await loginAs(clinicServer.baseUrl, username);
+    const response = await client.get("/api/platform/health");
+    assert.equal(response.status, 403, role);
+    assert.equal(response.body.error, "Platform owner access is required.", role);
+  }
+
+  const { client: platformOwner } = await loginAs(platformServer.baseUrl, "admin");
+  const response = await platformOwner.get("/api/platform/health");
+  assert.equal(response.status, 200);
+  assert.equal(response.body.api.ok, true);
+  assert.equal(response.body.app.name, "Clinova");
+  assert.equal(typeof response.body.app.version, "string");
+  assert.equal(response.body.database.connectionOk, true);
+  assert.equal(response.body.storage.uploads.exists, true);
+  assert.equal(response.body.storage.uploads.writable, true);
+  assert.equal(response.body.storage.backups.exists, true);
+  assert.equal(response.body.storage.backups.writable, true);
+  assert.equal(typeof response.body.runtime.uptimeSeconds, "number");
+  assert.equal(typeof response.body.memory.rssBytes, "number");
+  assert.equal(response.body.disk.paths.length, 2);
+  assert.ok(response.body.disk.paths.every((item) => !("path" in item)));
+
+  const serialized = JSON.stringify(response.body);
+  for (const forbiddenKey of ["SESSION_SECRET", "DATABASE_URL", "WHATSAPP_ACCESS_TOKEN", "databasePath", "backupDir", "uploadsDir"]) {
+    assert.ok(!serialized.includes(forbiddenKey), forbiddenKey);
+  }
+});
+
 test("system export permissions and invalid restore remain non-destructive", async () => {
   const unauthenticated = createHttpClient(clinicServer.baseUrl);
   assert.equal((await unauthenticated.get("/api/system/export")).status, 401);

@@ -1,6 +1,7 @@
 import { exact, matches, route } from "../../routes/route-utils.js";
 
 export const platformRoutes = [
+  route("GET", exact("/api/platform/health"), { module: "platform" }),
   route("GET", exact("/api/platform/tenants"), { module: "platform" }),
   route("POST", exact("/api/platform/tenants"), { module: "platform-provisioning" }),
   route("PUT", matches(/^\/api\/platform\/tenants\/\d+$/), { module: "platform" }),

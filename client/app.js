@@ -485,6 +485,13 @@ function renderLoginLegacy(error = "") {
 async function loadData() {
   const data = await api("/api/bootstrap");
   state.user = data.user;
+  if (data.user?.platformOwner) {
+    try {
+      data.platformHealth = await api("/api/platform/health");
+    } catch (error) {
+      data.platformHealth = { error: error.message };
+    }
+  }
   state.data = data;
 }
 
@@ -1625,8 +1632,8 @@ roleLabel = function (role) {
 function platformPageLabel(page) {
   const he = state.lang === "he";
   const labels = he
-    ? { platform: "קליניקות", platformBilling: "חיוב", platformReports: "דוחות מערכת" }
-    : { platform: "العيادات", platformBilling: "الفوترة", platformReports: "تقارير النظام" };
+    ? { platform: "קליניקות", platformBilling: "חיוב", platformReports: "דוחות מערכת", platformHealth: "מצב מערכת" }
+    : { platform: "العيادات", platformBilling: "الفوترة", platformReports: "تقارير النظام", platformHealth: "حالة النظام" };
   return labels[page] || pageLabel(page);
 }
 
@@ -1637,11 +1644,13 @@ function platformPageSubtitle(page) {
       platform: "ניהול הקליניקות, מנהלי הקליניקות, התוכניות והסטטוס",
       platformBilling: "הוצאת חשבוניות ומעקב גבייה לכל קליניקה",
       platformReports: "מדדי SaaS, שימוש, הכנסות וסטטוס מנויים",
+      platformHealth: "מצב API, מסד נתונים, אחסון ומשאבי השרת",
     }
     : {
       platform: "إدارة العيادات ومديري العيادات والخطط والحالة",
       platformBilling: "إصدار الفواتير ومتابعة التحصيل لكل عيادة",
       platformReports: "مؤشرات SaaS والاستخدام والإيرادات وحالة الاشتراكات",
+      platformHealth: "حالة API وقاعدة البيانات والتخزين وموارد الخادم",
     };
   return labels[page] || pageSubtitle();
 }
@@ -1662,6 +1671,43 @@ function platformMetrics() {
     openBalance: tenants.reduce((sum, tenant) => sum + Number(tenant.openBalance || 0), 0),
     paidRevenue: tenants.reduce((sum, tenant) => sum + Number(tenant.paidRevenue || 0), 0),
   };
+}
+
+function formatHealthBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes < 1) return "0 MB";
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderPlatformHealth() {
+  const health = state.data.platformHealth;
+  const he = state.lang === "he";
+  if (!health || health.error) {
+    return `<div class="card"><h3>${he ? "מצב מערכת" : "حالة النظام"}</h3><p class="alert">${escapeAttr(health?.error || (he ? "לא ניתן לטעון את מצב המערכת" : "تعذر تحميل حالة النظام"))}</p></div>`;
+  }
+
+  const good = (value) => value ? (he ? "תקין" : "سليم") : (he ? "דורש בדיקה" : "يحتاج فحص");
+  const runtime = `${health.runtime.nodeVersion} · ${Math.floor(Number(health.runtime.uptimeSeconds || 0) / 60)} ${he ? "דקות" : "دقيقة"}`;
+  const memory = `${formatHealthBytes(health.memory.heapUsedBytes)} / ${formatHealthBytes(health.memory.heapTotalBytes)}`;
+
+  return html`
+    <div class="grid stats">
+      ${statCard("API", good(health.api.ok), `${health.app.name} v${health.app.version}`, health.api.ok ? "green" : "red")}
+      ${statCard("DB", good(health.database.connectionOk), health.database.engine, health.database.connectionOk ? "green" : "red")}
+      ${statCard("UP", good(health.storage.uploads.exists && health.storage.uploads.writable), he ? "העלאות" : "الملفات المرفوعة", health.storage.uploads.exists && health.storage.uploads.writable ? "green" : "red")}
+      ${statCard("BK", good(health.storage.backups.exists && health.storage.backups.writable), he ? "גיבויים" : "النسخ الاحتياطية", health.storage.backups.exists && health.storage.backups.writable ? "green" : "red")}
+      ${statCard("RT", runtime, health.app.environment, "blue")}
+      ${statCard("MB", memory, `RSS ${formatHealthBytes(health.memory.rssBytes)}`, "purple")}
+    </div>
+    <div class="card">
+      <h3>${he ? "פרטי בדיקה" : "تفاصيل الفحص"}</h3>
+      <div class="stack-list">
+        <div class="feature-row"><div><strong>${he ? "זמן שרת" : "وقت الخادم"}</strong><span>${escapeAttr(health.runtime.serverTime)}</span></div></div>
+        <div class="feature-row"><div><strong>${he ? "סביבת הרצה" : "بيئة التشغيل"}</strong><span>${escapeAttr(health.app.environment)}</span></div></div>
+        <div class="feature-row"><div><strong>${he ? "גרסת Node.js" : "إصدار Node.js"}</strong><span>${escapeAttr(health.runtime.nodeVersion)}</span></div></div>
+      </div>
+    </div>
+  `;
 }
 
 function renderPlatformClinics() {
@@ -2023,6 +2069,7 @@ const cleanI18n = {
       platform: "العيادات",
       platformBilling: "الفوترة",
       platformReports: "تقارير النظام",
+      platformHealth: "حالة النظام",
       dashboard: "لوحة التحكم",
       calendar: "اليوم",
       appointments: "المواعيد",
@@ -2044,6 +2091,7 @@ const cleanI18n = {
       platform: "إدارة العيادات ومديري العيادات والخطط والحالة",
       platformBilling: "إصدار الفواتير ومتابعة التحصيل لكل عيادة",
       platformReports: "مؤشرات SaaS والاستخدام والإيرادات وحالة الاشتراكات",
+      platformHealth: "حالة API وقاعدة البيانات والتخزين وموارد الخادم",
       dashboard: "نظرة سريعة على نشاط العيادة اليوم",
       calendar: "عرض المواعيد حسب اليوم",
       appointments: "إدارة المواعيد والحضور والدفع",
@@ -2079,6 +2127,7 @@ const cleanI18n = {
       platform: "קליניקות",
       platformBilling: "חיוב",
       platformReports: "דוחות מערכת",
+      platformHealth: "מצב מערכת",
       dashboard: "לוח בקרה",
       calendar: "יומן",
       appointments: "תורים",
@@ -2100,6 +2149,7 @@ const cleanI18n = {
       platform: "ניהול הקליניקות, מנהלי הקליניקות, התוכניות והסטטוס",
       platformBilling: "הוצאת חשבוניות ומעקב גבייה לכל קליניקה",
       platformReports: "מדדי SaaS, שימוש, הכנסות וסטטוס מנויים",
+      platformHealth: "מצב API, מסד נתונים, אחסון ומשאבי השרת",
       dashboard: "מבט מהיר על פעילות הקליניקה היום",
       calendar: "תצוגת תורים לפי יום",
       appointments: "ניהול תורים, סטטוס ותשלום",
@@ -2477,7 +2527,7 @@ formFieldsHe = function (resource, row = {}) {
 }
 
 renderApp = function () {
-  const nav = state.user.platformOwner ? ["platform", "platformBilling", "platformReports"] : (navByRole[state.user.role] || []);
+  const nav = state.user.platformOwner ? ["platform", "platformBilling", "platformReports", "platformHealth"] : (navByRole[state.user.role] || []);
   if (!nav.includes(state.page)) state.page = nav[0] || "dashboard";
   document.documentElement.lang = state.lang;
   document.documentElement.dir = "rtl";
@@ -3201,6 +3251,7 @@ renderPage = function () {
   if (state.user?.platformOwner) {
     if (state.page === "platformBilling") return renderPlatformBilling();
     if (state.page === "platformReports") return renderPlatformReports();
+    if (state.page === "platformHealth") return renderPlatformHealth();
     return renderPlatformClinics();
   }
   if (state.page === "dashboard") return renderDashboardHe();

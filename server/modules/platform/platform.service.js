@@ -1,3 +1,8 @@
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { config } from "../../config.js";
+import { checkDatabaseConnection, databaseEngine } from "../../db.js";
+import { analyzeDiskUsagePaths } from "../../shared/monitoring/disk-usage.js";
 import {
   auditPlatformTenantUpdate,
   createSubscription,
@@ -8,6 +13,80 @@ import {
   updateSubscription,
   updateTenantPlanStatus,
 } from "./platform.repository.js";
+
+const packageInfo = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+
+function directoryStatus(path) {
+  const exists = existsSync(path);
+  if (!exists) return { exists: false, writable: false };
+  try {
+    accessSync(path, constants.W_OK);
+    return { exists: true, writable: true };
+  } catch {
+    return { exists: true, writable: false };
+  }
+}
+
+export async function getPlatformHealth() {
+  let databaseOk = false;
+  try {
+    databaseOk = await checkDatabaseConnection();
+  } catch {
+    databaseOk = false;
+  }
+
+  const uploads = directoryStatus(config.uploads.dir);
+  const backups = directoryStatus(config.backup.dir);
+  const disk = await analyzeDiskUsagePaths([
+    { label: "uploads", path: config.uploads.dir },
+    { label: "backups", path: config.backup.dir },
+  ]);
+  const memory = process.memoryUsage();
+
+  return {
+    status: 200,
+    body: {
+      ok: databaseOk && uploads.exists && uploads.writable && backups.exists && backups.writable,
+      api: {
+        ok: true,
+      },
+      app: {
+        name: "Clinova",
+        version: packageInfo.version,
+        environment: process.env.NODE_ENV || "development",
+      },
+      runtime: {
+        nodeVersion: process.version,
+        uptimeSeconds: Math.floor(process.uptime()),
+        serverTime: new Date().toISOString(),
+      },
+      database: {
+        engine: databaseEngine,
+        connectionOk: databaseOk,
+      },
+      storage: {
+        uploads,
+        backups,
+      },
+      disk: {
+        status: disk.status,
+        paths: disk.paths.map(({ label, exists, status, sizeBytes, sizeMb }) => ({
+          label,
+          exists,
+          status,
+          sizeBytes,
+          sizeMb,
+        })),
+      },
+      memory: {
+        rssBytes: memory.rss,
+        heapTotalBytes: memory.heapTotal,
+        heapUsedBytes: memory.heapUsed,
+        externalBytes: memory.external,
+      },
+    },
+  };
+}
 
 function validOptionalNumber(value) {
   if (value === undefined || value === null || value === "") return true;
