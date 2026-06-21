@@ -1,8 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-if (existsSync(".env")) {
-  const lines = readFileSync(".env", "utf8").split(/\r?\n/);
+const envFile = process.env.NODE_ENV === "development" && existsSync(".env.development")
+  ? ".env.development"
+  : ".env";
+
+if (existsSync(envFile)) {
+  const lines = readFileSync(envFile, "utf8").split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
