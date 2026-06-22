@@ -2933,7 +2933,7 @@ function openConsentSignModal(templateId, defaults = {}) {
 }
 
 function cleanWorkDaysPicker(value) {
-  const selected = new Set(parseWorkDays(value));
+  const selected = new Set(selectedWorkDays(value));
   const days = state.lang === "he"
     ? [["0", "ראשון"], ["1", "שני"], ["2", "שלישי"], ["3", "רביעי"], ["4", "חמישי"], ["5", "שישי"], ["6", "שבת"]]
     : [["0", "الأحد"], ["1", "الإثنين"], ["2", "الثلاثاء"], ["3", "الأربعاء"], ["4", "الخميس"], ["5", "الجمعة"], ["6", "السبت"]];
