@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
+import { access, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { createHttpClient, loginAs } from "./helpers/http-client.js";
@@ -207,6 +207,49 @@ test("platform health is visible only to the platform owner", async () => {
   for (const forbiddenKey of ["SESSION_SECRET", "DATABASE_URL", "WHATSAPP_ACCESS_TOKEN", "databasePath", "backupDir", "uploadsDir"]) {
     assert.ok(!serialized.includes(forbiddenKey), forbiddenKey);
   }
+});
+
+test("platform backup center is restricted and creates backups only in the configured directory", async () => {
+  const unauthenticated = createHttpClient(clinicServer.baseUrl);
+  assert.equal((await unauthenticated.get("/api/platform/backups")).status, 401);
+  assert.equal((await unauthenticated.post("/api/platform/backups")).status, 401);
+
+  for (const [role, username] of Object.entries(clinicRoles)) {
+    const { client } = await loginAs(clinicServer.baseUrl, username);
+    assert.equal((await client.get("/api/platform/backups")).status, 403, `${role} GET`);
+    assert.equal((await client.post("/api/platform/backups")).status, 403, `${role} POST`);
+  }
+
+  const { client: platformOwner } = await loginAs(platformServer.baseUrl, "admin");
+  const before = await platformOwner.get("/api/platform/backups");
+  assert.equal(before.status, 200);
+  assert.equal(typeof before.body.count, "number");
+  assert.ok(Array.isArray(before.body.backups));
+
+  const created = await platformOwner.post("/api/platform/backups");
+  assert.equal(created.status, 201);
+  assert.equal(created.body.ok, true);
+  assert.match(created.body.backup.filename, /^clinova-manual-\d{8}-\d{6}\.sqlite$/);
+  assert.equal(created.body.backup.id, created.body.backup.filename);
+  assert.equal(typeof created.body.backup.createdAt, "string");
+  assert.ok(created.body.backup.size > 0);
+
+  const files = await readdir(platformServer.backupsDir);
+  assert.ok(files.includes(created.body.backup.filename));
+  const createdStats = await stat(join(platformServer.backupsDir, created.body.backup.filename));
+  assert.ok(createdStats.isFile());
+
+  const after = await platformOwner.get("/api/platform/backups");
+  assert.equal(after.status, 200);
+  assert.equal(after.body.count, before.body.count + 1);
+  assert.equal(after.body.latest.filename, created.body.backup.filename);
+  assert.ok(after.body.backups.some((item) => item.filename === created.body.backup.filename));
+
+  const serialized = JSON.stringify({ created: created.body, listed: after.body });
+  assert.ok(!serialized.includes(platformServer.backupsDir));
+  assert.ok(!serialized.includes(platformServer.databasePath));
+  assert.ok(!serialized.includes("DATABASE_URL"));
+  assert.ok(!serialized.includes("SESSION_SECRET"));
 });
 
 test("system export permissions and invalid restore remain non-destructive", async () => {

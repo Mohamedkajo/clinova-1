@@ -430,6 +430,21 @@ function bindPageActions() {
   const exportPlatformBilling = document.getElementById("exportPlatformBilling");
   if (exportPlatformBilling) exportPlatformBilling.addEventListener("click", exportPlatformBillingCsv);
   document.querySelectorAll("[data-platform-invoice-print]").forEach((button) => button.addEventListener("click", () => printPlatformInvoice(Number(button.dataset.platformInvoicePrint))));
+  const createPlatformBackupButton = document.querySelector("[data-platform-backup-create]");
+  if (createPlatformBackupButton) createPlatformBackupButton.addEventListener("click", async () => {
+    state.platformBackupCreating = true;
+    state.platformBackupError = "";
+    renderApp();
+    try {
+      await api("/api/platform/backups", { method: "POST" });
+      state.data.platformBackups = await api("/api/platform/backups");
+    } catch (error) {
+      state.platformBackupError = error.message;
+    } finally {
+      state.platformBackupCreating = false;
+      renderApp();
+    }
+  });
   bindRestoredSectionActions();
 }
 
@@ -490,6 +505,11 @@ async function loadData() {
       data.platformHealth = await api("/api/platform/health");
     } catch (error) {
       data.platformHealth = { error: error.message };
+    }
+    try {
+      data.platformBackups = await api("/api/platform/backups");
+    } catch (error) {
+      data.platformBackups = { error: error.message, count: 0, latest: null, backups: [] };
     }
   }
   state.data = data;
@@ -1681,6 +1701,7 @@ function formatHealthBytes(value) {
 
 function renderPlatformHealth() {
   const health = state.data.platformHealth;
+  const backups = state.data.platformBackups || { count: 0, latest: null, backups: [] };
   const he = state.lang === "he";
   if (!health || health.error) {
     return `<div class="card"><h3>${he ? "מצב מערכת" : "حالة النظام"}</h3><p class="alert">${escapeAttr(health?.error || (he ? "לא ניתן לטעון את מצב המערכת" : "تعذر تحميل حالة النظام"))}</p></div>`;
@@ -1689,6 +1710,11 @@ function renderPlatformHealth() {
   const good = (value) => value ? (he ? "תקין" : "سليم") : (he ? "דורש בדיקה" : "يحتاج فحص");
   const runtime = `${health.runtime.nodeVersion} · ${Math.floor(Number(health.runtime.uptimeSeconds || 0) / 60)} ${he ? "דקות" : "دقيقة"}`;
   const memory = `${formatHealthBytes(health.memory.heapUsedBytes)} / ${formatHealthBytes(health.memory.heapTotalBytes)}`;
+  const latestBackup = backups.latest;
+  const recentBackups = Array.isArray(backups.backups) ? backups.backups : [];
+  const backupDate = latestBackup?.createdAt
+    ? new Date(latestBackup.createdAt).toLocaleString(he ? "he-IL" : "ar")
+    : (he ? "אין גיבויים" : "لا توجد نسخ");
 
   return html`
     <div class="grid stats">
@@ -1705,6 +1731,30 @@ function renderPlatformHealth() {
         <div class="feature-row"><div><strong>${he ? "זמן שרת" : "وقت الخادم"}</strong><span>${escapeAttr(health.runtime.serverTime)}</span></div></div>
         <div class="feature-row"><div><strong>${he ? "סביבת הרצה" : "بيئة التشغيل"}</strong><span>${escapeAttr(health.app.environment)}</span></div></div>
         <div class="feature-row"><div><strong>${he ? "גרסת Node.js" : "إصدار Node.js"}</strong><span>${escapeAttr(health.runtime.nodeVersion)}</span></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="panel-head">
+        <div>
+          <h3>${he ? "מרכז גיבויים" : "مركز النسخ الاحتياطي"}</h3>
+          <p>${he ? "יצירת גיבויי SQLite ידניים מאובטחים" : "إنشاء نسخ SQLite يدوية آمنة"}</p>
+        </div>
+        <button class="btn" data-platform-backup-create ${state.platformBackupCreating ? "disabled" : ""}>
+          ${state.platformBackupCreating
+            ? (he ? "יוצר גיבוי..." : "جار إنشاء النسخة...")
+            : (he ? "יצירת גיבוי עכשיו" : "إنشاء نسخة الآن")}
+        </button>
+      </div>
+      ${backups.error || state.platformBackupError ? `<div class="alert">${escapeAttr(state.platformBackupError || backups.error)}</div>` : ""}
+      <div class="grid stats">
+        ${statCard("BK", Number(backups.count || 0), he ? "מספר גיבויים" : "عدد النسخ", "blue")}
+        ${statCard("LT", backupDate, he ? "גיבוי אחרון" : "آخر نسخة", latestBackup ? "green" : "gold")}
+        ${statCard("MB", formatHealthBytes(latestBackup?.size), he ? "גודל גיבוי אחרון" : "حجم آخر نسخة", "purple")}
+      </div>
+      <div class="stack-list">
+        ${recentBackups.length
+          ? recentBackups.map((backup) => `<div class="feature-row"><div><strong>${escapeAttr(backup.filename)}</strong><span>${escapeAttr(new Date(backup.createdAt).toLocaleString(he ? "he-IL" : "ar"))}</span><small>${formatHealthBytes(backup.size)}</small></div></div>`).join("")
+          : `<p class="muted">${he ? "לא נמצאו גיבויים" : "لم يتم العثور على نسخ احتياطية"}</p>`}
       </div>
     </div>
   `;
