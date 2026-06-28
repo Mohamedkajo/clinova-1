@@ -20,6 +20,10 @@ export async function updateTenantAdminPassword(tenantId, userId, passwordHash) 
     .run(passwordHash, userId, tenantId);
 }
 
+export async function deleteTenantAdminSessions(tenantId, userId) {
+  await db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(userId, tenantId);
+}
+
 export async function auditTenantAdminPasswordReset(user, targetTenantId, targetUserId) {
   await audit(user.id, "platform_reset_tenant_password", "users", targetUserId, {
     tenantId: user.tenantId,

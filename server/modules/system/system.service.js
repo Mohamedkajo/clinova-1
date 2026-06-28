@@ -50,7 +50,7 @@ async function readRawBody(req, maxBytes = config.uploads.maxBytes) {
   for await (const chunk of req) {
     size += chunk.length;
     if (size > maxBytes) {
-      const error = new Error(`׳”׳§׳•׳‘׳¥ ׳’׳“׳•׳ ׳׳“׳™. ׳”׳’׳•׳“׳ ׳”׳׳§׳¡׳™׳׳׳™ ׳”׳•׳ ${Math.round(maxBytes / 1024 / 1024)}MB`);
+      const error = new Error(`הקובץ גדול מדי. הגודל המקסימלי הוא ${Math.round(maxBytes / 1024 / 1024)}MB`);
       error.status = 413;
       throw error;
     }
@@ -63,7 +63,7 @@ async function readMultipart(req) {
   const contentType = req.headers["content-type"] || "";
   const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[1] || contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[2];
   if (!boundary) {
-    const error = new Error("׳‘׳§׳©׳× ׳”׳¢׳׳׳” ׳׳ ׳×׳§׳™׳ ׳”");
+    const error = new Error("בקשת העלאה לא תקינה");
     error.status = 400;
     throw error;
   }
@@ -150,7 +150,7 @@ export async function scheduleSystemRestore(req, user) {
 
   return {
     ok: true,
-    body: { ok: true, safetyBackup: safety.target, restarting: true },
+    body: { ok: true, safetyBackup: basename(safety.target), restarting: true },
   };
 }
 

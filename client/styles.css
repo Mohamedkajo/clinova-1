@@ -1880,3 +1880,7 @@ tr:hover td { background: #F1F5F9; }
     max-height: 64px;
   }
 }
+.pre-wrap,
+.feature-row small {
+  white-space: pre-wrap;
+}

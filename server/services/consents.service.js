@@ -4,10 +4,13 @@ import { randomUUID } from "node:crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { config } from "../config.js";
+import { hasValidFileSignature } from "../shared/uploads/file-signatures.js";
 import {
   archiveConsentTemplate,
   auditConsent,
   clientById,
+  consentAppointmentExists,
+  consentCategoryExists,
   consentTemplateById,
   createConsentSignature,
   createConsentTemplate,
@@ -49,27 +52,27 @@ function consentFontText(value, unicode) {
 function consentPdfLabels(lang = "he") {
   if (lang === "ar") {
     return {
-      title: "״¥‚״±״§״± ‚״§†ˆ† …ˆ‚‘״¹",
-      form: "״§„†…ˆ״°״¬",
-      client: "״§„״¹…„",
-      signer: "״§„…ˆ‚‘״¹",
-      appointment: "״§„…ˆ״¹״¯",
-      signedAt: "ˆ‚״× ״§„״×ˆ‚״¹",
-      signatureStamp: "״®״×… ״§„״×ˆ‚״¹",
-      displayName: "״¥‚״±״§״± …ˆ‚‘״¹",
-      notes: "״¥‚״±״§״± ‚״§†ˆ† …ˆ‚‘״¹",
+      title: "إقرار قانوني موقّع",
+      form: "النموذج",
+      client: "العميل",
+      signer: "الموقّع",
+      appointment: "الموعد",
+      signedAt: "وقت التوقيع",
+      signatureStamp: "ختم التوقيع",
+      displayName: "إقرار موقّع",
+      notes: "إقرار قانوني موقّع",
     };
   }
   return {
-    title: "׳˜׳•׳₪׳¡ ׳׳©׳₪׳˜׳™ ׳—׳×׳•׳",
-    form: "׳—׳×׳™׳׳”",
-    client: "׳׳§׳•׳—",
-    signer: "׳—׳•׳×׳",
-    appointment: "׳×׳•׳¨",
-    signedAt: "׳ ׳—׳×׳ ׳‘׳×׳׳¨׳™׳",
-    signatureStamp: "׳—׳•׳×׳׳× ׳—׳×׳™׳׳”",
-    displayName: "׳˜׳•׳₪׳¡ ׳—׳×׳•׳",
-    notes: "׳˜׳•׳₪׳¡ ׳׳©׳₪׳˜׳™ ׳—׳×׳•׳",
+    title: "טופס משפטי חתום",
+    form: "חתימה",
+    client: "לקוח",
+    signer: "חותם",
+    appointment: "תור",
+    signedAt: "נחתם בתאריך",
+    signatureStamp: "חותמת חתימה",
+    displayName: "טופס חתום",
+    notes: "טופס משפטי חתום",
   };
 }
 
@@ -135,6 +138,15 @@ export async function signConsent(user, id, body) {
   }
   const clientId = body.clientId || null;
   const appointmentId = body.appointmentId || null;
+  if (!await consentTemplateById(id, user.tenantId)) {
+    return { status: 404, body: { error: "Consent file not found." } };
+  }
+  if (clientId && !await clientById(clientId, user.tenantId)) {
+    return { status: 404, body: { error: "Client not found." } };
+  }
+  if (!await consentAppointmentExists(appointmentId, user.tenantId)) {
+    return { status: 404, body: { error: "Appointment not found." } };
+  }
   const existingSignature = await findDuplicateSignature({
     tenantId: user.tenantId,
     templateId: id,
@@ -142,7 +154,7 @@ export async function signConsent(user, id, body) {
     appointmentId,
   });
   if (existingSignature) {
-    return { status: 409, body: { error: body.lang === "he" ? "׳ ׳—׳×׳ ׳›׳‘׳¨" : "״×… ״§„״×ˆ‚״¹" } };
+    return { status: 409, body: { error: body.lang === "he" ? "נחתם כבר" : "تم التوقيع" } };
   }
   const signatureId = await createConsentSignature({
     tenantId: user.tenantId,
@@ -182,6 +194,14 @@ export async function uploadConsent(user, multipart) {
     return { status: 400, body: { error: "Only PDF consent files are supported." } };
   }
 
+  if (!hasValidFileSignature(file)) {
+    return { status: 400, body: { error: "File content does not match its type." } };
+  }
+  const categoryId = multipart.fields.categoryId || null;
+  if (!await consentCategoryExists(categoryId, user.tenantId)) {
+    return { status: 404, body: { error: "Category not found." } };
+  }
+
   const consentDir = resolve(config.uploads.dir, "consents");
   mkdirSync(consentDir, { recursive: true });
   const storedName = `${Date.now()}-${randomUUID()}.pdf`;
@@ -190,7 +210,7 @@ export async function uploadConsent(user, multipart) {
 
   const id = await createConsentTemplate({
     tenantId: user.tenantId,
-    categoryId: multipart.fields.categoryId || null,
+    categoryId,
     title: String(multipart.fields.title || file.filename).trim(),
     originalName: file.filename,
     mimeType: file.type,

@@ -2,19 +2,7 @@ import { json } from "../shared/http/json-response.js";
 import { apiNotFound } from "../shared/http/api-not-found.js";
 import { requirePermission } from "../services/permissions.service.js";
 import { createFeedback, getFeedback, getPublicFeedback, submitFeedback } from "../services/feedback.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../shared/http/json-body.js";
 
 export async function handleFeedbackRoute(req, res, url) {
   const parts = url.pathname.split("/").filter(Boolean);
@@ -28,7 +16,7 @@ export async function handleFeedbackRoute(req, res, url) {
     const token = parts[3];
     const result = req.method === "GET"
       ? await getPublicFeedback(token)
-      : await submitFeedback(token, await readBody(req));
+      : await submitFeedback(token, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }
@@ -47,7 +35,7 @@ export async function handleFeedbackRoute(req, res, url) {
   }
 
   if (req.method === "POST") {
-    const result = await createFeedback(permission.user, await readBody(req), req);
+    const result = await createFeedback(permission.user, await readJsonBody(req), req);
     json(res, result.status, result.body);
     return true;
   }

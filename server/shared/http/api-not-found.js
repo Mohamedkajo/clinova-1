@@ -1,7 +1,7 @@
 import { json } from "./json-response.js";
 
 export const apiNotFoundBody = {
-  error: "״§„…״³״§״± ״÷״± …ˆ״¬ˆ״¯",
+  error: "المسار غير موجود",
 };
 
 export function apiNotFound(res) {

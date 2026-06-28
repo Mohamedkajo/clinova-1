@@ -20,6 +20,23 @@ export async function findServiceForConflict(serviceId, tenantId) {
     .get(serviceId, tenantId);
 }
 
+export async function appointmentClientExists(clientId, tenantId) {
+  return Boolean(await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ?").get(clientId, tenantId));
+}
+
+export async function appointmentServiceExists(serviceId, tenantId) {
+  return Boolean(await db.prepare("SELECT id FROM services WHERE id = ? AND tenant_id = ?").get(serviceId, tenantId));
+}
+
+export async function appointmentTherapistExists(therapistId, tenantId) {
+  return Boolean(await db.prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ?").get(therapistId, tenantId));
+}
+
+export async function appointmentAssignment(id, tenantId) {
+  return db.prepare("SELECT therapist_id AS therapistId FROM appointments WHERE id = ? AND tenant_id = ? AND active = 1")
+    .get(id, tenantId);
+}
+
 export async function listConflictingAppointmentRows({ tenantId, date, categoryId, id }) {
   return await db.prepare(`
     SELECT a.*, s.duration, s.name AS service_name, c.fname, c.lname

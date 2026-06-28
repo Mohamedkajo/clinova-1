@@ -78,7 +78,7 @@ async function clinicBootstrap(req, user) {
     // Operational clinic data.
     clients: await listClientsForBootstrap(user),
     crmTasks: await listCrmTaskRows(user),
-    crmEvents: await listCrmEventRows(user.tenantId),
+    crmEvents: await listCrmEventRows(user),
     appointments: await listAppointmentsForBootstrap(user),
 
     // Legal, feedback, gifts, messaging.

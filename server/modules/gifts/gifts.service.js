@@ -1,4 +1,11 @@
-import { auditGift, createGiftCard, listGiftCards, updateGiftCardStatus } from "./gifts.repository.js";
+import {
+  auditGift,
+  createGiftCard,
+  giftClientExists,
+  giftServiceExists,
+  listGiftCards,
+  updateGiftCardStatus,
+} from "./gifts.repository.js";
 
 function validOptionalNumber(value) {
   if (value === undefined || value === null || value === "") return true;
@@ -17,6 +24,13 @@ export async function getGifts(user) {
 export async function addGift(user, body) {
   if (!validOptionalNumber(body.sessions)) {
     return { status: 400, body: { error: "Valid gift sessions are required." } };
+  }
+  if (!await giftClientExists(body.fromClientId, user.tenantId)
+      || !await giftClientExists(body.toClientId, user.tenantId)) {
+    return { status: 404, body: { error: "Client not found." } };
+  }
+  if (!await giftServiceExists(body.serviceId, user.tenantId)) {
+    return { status: 404, body: { error: "Service not found." } };
   }
 
   const code = `GIFT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;

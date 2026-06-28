@@ -67,7 +67,7 @@ export async function getMessageLogs(user) {
 
 export async function sendAppointmentReminder(user, id) {
   const appointment = (await listAppointmentRows(user)).map(appointmentFromRow).find((item) => item.id === id);
-  if (!appointment) return { status: 404, body: { error: "׳”׳×׳•׳¨ ׳׳ ׳ ׳׳¦׳" } };
+  if (!appointment) return { status: 404, body: { error: "התור לא נמצא" } };
   const settings = await clinicSettings(user.tenantId);
   const message = renderReminderMessage(appointment, settings);
   const result = await sendTenantWhatsApp({ user, entity: "appointments", entityId: id, to: appointment.clientPhone, message });
@@ -89,7 +89,7 @@ export async function sendAppointmentReminder(user, id) {
 export async function sendGiftWhatsApp(user, id) {
   const gift = (await listGiftCards(user.tenantId)).find((item) => item.id === id);
   if (!gift) return { status: 404, body: { error: "Gift card not found." } };
-  const message = `נ ${gift.toClientName || ""}, ׳§׳™׳‘׳׳× ׳׳×׳ ׳” ׳-${gift.fromClientName || "Clinova"}: ${gift.sessions} ״¬„״³״© ${gift.serviceName || ""}. ׳§׳•׳“ ׳”׳׳×׳ ׳”: ${gift.code}. ${gift.message || ""}`;
+  const message = `🎁 ${gift.toClientName || ""}, קיבלת מתנה מ-${gift.fromClientName || "Clinova"}: ${gift.sessions} جلسة ${gift.serviceName || ""}. קוד המתנה: ${gift.code}. ${gift.message || ""}`;
   const settings = await clinicSettings(user.tenantId);
   const finalMessage = renderTemplate(settings.whatsappGiftTemplate || message, {
     from: gift.fromClientName || settings.clinicName || "Clinova",

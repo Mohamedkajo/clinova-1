@@ -19,6 +19,13 @@ export async function canSeeClient(user, clientId) {
   return Boolean(row);
 }
 
+export async function clientTherapistExists(therapistId, tenantId) {
+  if (!therapistId) return true;
+  const row = await db.prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ? AND active = 1")
+    .get(therapistId, tenantId);
+  return Boolean(row);
+}
+
 export async function createClient(tenantId, values) {
   const result = await db.prepare("INSERT INTO clients (tenant_id, fname, lname, phone, email, therapist_id, stage, source, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(tenantId, values.fname, values.lname, values.phone, values.email, values.therapistId, values.stage, values.source, values.tags, values.notes);

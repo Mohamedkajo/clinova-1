@@ -1,4 +1,8 @@
 import {
+  appointmentClientExists,
+  appointmentAssignment,
+  appointmentServiceExists,
+  appointmentTherapistExists,
   archiveAppointment,
   auditAppointment,
   createAppointment,
@@ -16,6 +20,7 @@ function toMinutes(time) {
   const [hours, minutes] = String(time || "00:00").split(":").map(Number);
   return hours * 60 + minutes;
 }
+
 
 function hasRequiredFields(body, fields) {
   return fields.every((field) => body[field] !== undefined && body[field] !== null);
@@ -150,6 +155,15 @@ function appointmentValues(user, body) {
 }
 
 async function validateAppointmentWrite(user, id, values) {
+  if (!await appointmentClientExists(values.clientId, user.tenantId)) {
+    return { status: 404, body: { error: "Client not found." } };
+  }
+  if (!await appointmentServiceExists(values.serviceId, user.tenantId)) {
+    return { status: 404, body: { error: "Service not found." } };
+  }
+  if (!await appointmentTherapistExists(values.therapistId, user.tenantId)) {
+    return { status: 404, body: { error: "Therapist not found." } };
+  }
   const conflict = await appointmentConflict({
     id,
     tenantId: user.tenantId,
@@ -203,6 +217,12 @@ export async function addAppointment(user, body) {
 }
 
 export async function editAppointment(user, id, body) {
+  if (user.role === "therapist") {
+    const appointment = await appointmentAssignment(id, user.tenantId);
+    if (!appointment || Number(appointment.therapistId) !== Number(user.id)) {
+      return { status: 404, body: { error: "Appointment not found." } };
+    }
+  }
   if (!hasRequiredUpdateFields(body)) {
     return { status: 400, body: { error: "Client, service, therapist, date, and time are required." } };
   }

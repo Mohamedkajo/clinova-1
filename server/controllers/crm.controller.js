@@ -2,19 +2,7 @@ import { json } from "../shared/http/json-response.js";
 import { apiNotFound } from "../shared/http/api-not-found.js";
 import { requirePermission } from "../services/permissions.service.js";
 import { addCrmTask, editCrmTask, getCrm, getCrmTasks } from "../services/crm.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../shared/http/json-body.js";
 
 export async function handleCrmRoute(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/crm") {
@@ -53,13 +41,13 @@ export async function handleCrmRoute(req, res, url) {
   }
 
   if (req.method === "POST" && !id) {
-    const result = await addCrmTask(permission.user, await readBody(req));
+    const result = await addCrmTask(permission.user, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }
 
   if (req.method === "PUT" && id) {
-    const result = await editCrmTask(permission.user, id, await readBody(req));
+    const result = await editCrmTask(permission.user, id, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }

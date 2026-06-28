@@ -9,17 +9,14 @@ import {
   findUserForLogin,
   toUser,
 } from "../repositories/auth.repository.js";
+import { resolveClientIp } from "../shared/http/client-ip.js";
 
 const loginAttempts = new Map();
 const maxLoginAttempts = 5;
 const loginWindowMs = 15 * 60 * 1000;
 
-function clientIp(req) {
-  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
-}
-
 function loginKey(req, username) {
-  return `${clientIp(req)}:${String(username || "").toLowerCase()}`;
+  return `${resolveClientIp(req)}:${String(username || "").toLowerCase()}`;
 }
 
 function isLoginBlocked(req, username) {
@@ -69,7 +66,7 @@ export async function login(req, body) {
   if (isLoginBlocked(req, identifier)) {
     return {
       status: 429,
-      body: { error: "…״­״§ˆ„״§״× ״¯״®ˆ„ ƒ״«״±״©. ״­״§ˆ„ …״±״© ״£״®״±‰ ״¨״¹״¯ 15 ״¯‚‚״©" },
+      body: { error: "محاولات دخول كثيرة. حاول مرة أخرى بعد 15 دقيقة" },
     };
   }
 
@@ -78,7 +75,7 @@ export async function login(req, body) {
     recordFailedLogin(req, identifier);
     return {
       status: 401,
-      body: { error: "״§״³… ״§„…״³״×״®״¯… ״£ˆ ƒ„…״© ״§„…״±ˆ״± ״÷״± ״µ״­״­״©" },
+      body: { error: "اسم المستخدم أو كلمة المرور غير صحيحة" },
     };
   }
 

@@ -1,19 +1,7 @@
 import { json } from "../shared/http/json-response.js";
 import { requirePermission, requirePlatformOwner, requireUser } from "../services/permissions.service.js";
 import { getSettings, getTenant, saveSettings, saveTenant } from "../services/settings.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../shared/http/json-body.js";
 
 export async function handleSettingsRoute(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/settings") {
@@ -33,7 +21,7 @@ export async function handleSettingsRoute(req, res, url) {
       json(res, auth.status, auth.body);
       return true;
     }
-    const result = await saveSettings(auth.user, await readBody(req));
+    const result = await saveSettings(auth.user, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }
@@ -55,7 +43,7 @@ export async function handleSettingsRoute(req, res, url) {
       json(res, auth.status, auth.body);
       return true;
     }
-    const result = await saveTenant(auth.user, await readBody(req));
+    const result = await saveTenant(auth.user, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }

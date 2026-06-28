@@ -27,6 +27,10 @@ export async function updateUser(id, tenantId, values) {
     .run(...params);
 }
 
+export async function deleteUserSessions(id, tenantId) {
+  await db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(id, tenantId);
+}
+
 export async function deactivateUser(id, tenantId) {
   await db.prepare("UPDATE users SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
     .run(id, tenantId);

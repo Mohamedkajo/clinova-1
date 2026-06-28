@@ -1,22 +1,10 @@
 import { json } from "../shared/http/json-response.js";
 import { currentUser, login, logout, parseCookies } from "../services/auth.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../shared/http/json-body.js";
 
 export async function handleAuthRoute(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/login") {
-    const result = await login(req, await readBody(req));
+    const result = await login(req, await readJsonBody(req));
     if (result.cookie) res.setHeader("Set-Cookie", result.cookie);
     json(res, result.status, result.body);
     return true;

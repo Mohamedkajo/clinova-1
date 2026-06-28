@@ -28,6 +28,10 @@ export const config = {
   databaseConnectionTimeoutMs: Math.max(1000, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 10000)),
   sessionSecret: process.env.SESSION_SECRET || "dev-only-change-me",
   cookieSecure: String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true",
+  trustedProxyIps: String(process.env.TRUSTED_PROXY_IPS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
   backup: {
     enabled: String(process.env.BACKUP_ENABLED || "true").toLowerCase() !== "false",
     dir: resolve(process.env.BACKUP_DIR || "./backups"),

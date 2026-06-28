@@ -1,8 +1,8 @@
 import { currentUser, parseCookies } from "./auth.service.js";
 import { permissions } from "../repositories/permissions.repository.js";
 
-const loginRequiredError = "ן¢ֲ׳´ֲ¬׳´ֲ¨ ׳´ֳ—׳´ֲ³׳´ֲ¬ן¢ֲן¢ג€ ׳´ֲ§ן¢ג€׳´ֲ¯׳´ֲ®ן¢ֻ†ן¢ג€";
-const forbiddenError = "ן¢ג€׳´ֲ§ ׳´ֳ—ן¢ג€¦ן¢ג€ן¢ֶ’ ׳´ֲµן¢ג€׳´ֲ§׳´ֲ­ן¢ֲ׳´ֲ© ן¢ג€ן¢ג€¡׳´ֲ°ן¢ג€¡ ׳´ֲ§ן¢ג€׳´ֲ¹ן¢ג€¦ן¢ג€ן¢ֲ׳´ֲ©";
+const loginRequiredError = "يجب تسجيل الدخول";
+const forbiddenError = "لا تملك صلاحية لهذه العملية";
 
 export async function requireUser(req) {
   const user = await currentUser(parseCookies(req).clinic_session);

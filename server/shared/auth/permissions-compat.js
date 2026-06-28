@@ -7,7 +7,7 @@ export const legacyPlatformClinicApiBody = {
 };
 
 export const legacyForbiddenBody = {
-  error: "„״§ ״×…„ƒ ״µ„״§״­״© „‡״°‡ ״§„״¹…„״©",
+  error: "لا تملك صلاحية لهذه العملية",
 };
 
 export const legacyPlatformOwnerRequiredBody = {

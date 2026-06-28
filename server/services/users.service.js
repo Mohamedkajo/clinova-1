@@ -3,6 +3,7 @@ import {
   auditUser,
   createUser,
   deactivateUser,
+  deleteUserSessions,
   findManagedUser,
   listUsers,
   tenantBillingSnapshot,
@@ -104,6 +105,7 @@ export async function editUser(user, id, body) {
   if (body.password) values.passwordHash = hashPassword(body.password);
 
   await updateUser(id, user.tenantId, values);
+  if (values.passwordHash) await deleteUserSessions(id, user.tenantId);
   await auditUser(user.id, "update", id, user.tenantId);
   return { status: 200, body: { ok: true } };
 }

@@ -57,6 +57,17 @@ export async function clientById(clientId, tenantId) {
   return await db.prepare("SELECT fname, lname FROM clients WHERE id = ? AND tenant_id = ?").get(clientId, tenantId);
 }
 
+export async function consentAppointmentExists(appointmentId, tenantId) {
+  if (!appointmentId) return true;
+  return Boolean(await db.prepare("SELECT id FROM appointments WHERE id = ? AND tenant_id = ?").get(appointmentId, tenantId));
+}
+
+export async function consentCategoryExists(categoryId, tenantId) {
+  if (!categoryId) return true;
+  return Boolean(await db.prepare("SELECT id FROM categories WHERE id = ? AND tenant_id = ? AND active = 1")
+    .get(categoryId, tenantId));
+}
+
 export async function createSignedClientFile({ tenantId, clientId, name, originalName, mimeType, size, path, notes }) {
   const result = await db.prepare(`
     INSERT INTO client_files (tenant_id, client_id, name, url, original_name, mime_type, size, path, notes)

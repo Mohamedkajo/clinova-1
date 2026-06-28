@@ -14,19 +14,25 @@ export async function listCrmTaskRows(user) {
     LIMIT 150
   `).all(user.tenantId);
   if (user.role !== "therapist") return rows;
-  return rows.filter((row) => Number(row.assignedTo || 0) === Number(user.id));
+  const visibleClientIds = new Set((await db.prepare(
+    "SELECT id FROM clients WHERE tenant_id = ? AND active = 1 AND therapist_id = ?",
+  ).all(user.tenantId, user.id)).map((row) => Number(row.id)));
+  return rows.filter((row) => Number(row.assignedTo || 0) === Number(user.id) || visibleClientIds.has(Number(row.clientId)));
 }
 
-export async function listCrmEventRows(tenantId, clientId = null) {
-  const where = clientId ? "WHERE e.tenant_id = ? AND e.client_id = ?" : "WHERE e.tenant_id = ?";
-  const args = clientId ? [tenantId, clientId] : [tenantId];
+export async function listCrmEventRows(user, clientId = null) {
+  const therapistFilter = user.role === "therapist" ? " AND c.therapist_id = ?" : "";
+  const clientFilter = clientId ? " AND e.client_id = ?" : "";
+  const args = [user.tenantId];
+  if (user.role === "therapist") args.push(user.id);
+  if (clientId) args.push(clientId);
   return await db.prepare(`
     SELECT e.id, e.client_id AS clientId, e.user_id AS userId, e.type, e.description,
            e.created_at AS createdAt, c.fname || ' ' || c.lname AS clientName, u.name AS userName
     FROM crm_events e
     LEFT JOIN clients c ON c.id = e.client_id
     LEFT JOIN users u ON u.id = e.user_id
-    ${where}
+    WHERE e.tenant_id = ?${therapistFilter}${clientFilter}
     ORDER BY e.id DESC
     LIMIT 100
   `).all(...args);
@@ -34,6 +40,11 @@ export async function listCrmEventRows(tenantId, clientId = null) {
 
 export async function clientExists(clientId, tenantId) {
   const row = await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ? AND active = 1").get(clientId, tenantId);
+  return Boolean(row);
+}
+
+export async function assignedUserExists(userId, tenantId) {
+  const row = await db.prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ? AND active = 1").get(userId, tenantId);
   return Boolean(row);
 }
 
@@ -46,7 +57,7 @@ export async function createCrmTask({ tenantId, clientId, assignedTo, type, titl
 }
 
 export async function crmTaskById(id, tenantId) {
-  return await db.prepare("SELECT client_id FROM crm_tasks WHERE id = ? AND tenant_id = ?").get(id, tenantId);
+  return await db.prepare("SELECT client_id, assigned_to FROM crm_tasks WHERE id = ? AND tenant_id = ?").get(id, tenantId);
 }
 
 export async function updateCrmTask(id, tenantId, values) {

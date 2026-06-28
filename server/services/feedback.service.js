@@ -92,7 +92,7 @@ export async function createFeedback(user, body, req) {
   const proto = req.headers["x-forwarded-proto"] || "https";
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   const link = `${proto}://${host}/feedback.html?token=${encodeURIComponent(token)}`;
-  const message = `׳©׳׳•׳ ${appointment.clientName}, ׳ ׳©׳׳— ׳׳§׳‘׳ ׳—׳•׳•׳× ׳“׳¢׳× ׳§׳¦׳¨׳” ׳׳—׳¨׳™ ׳”׳˜׳™׳₪׳•׳: ${link}`;
+  const message = `שלום ${appointment.clientName}, נשמח לקבל חוות דעת קצרה אחרי הטיפול: ${link}`;
   const settings = await clinicSettings(user.tenantId);
   const finalMessage = renderTemplate(settings.whatsappFeedbackTemplate || message, {
     client: appointment.clientName,

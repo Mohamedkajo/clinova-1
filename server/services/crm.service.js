@@ -1,5 +1,6 @@
 import {
   addCrmEvent,
+  assignedUserExists,
   auditCrmTask,
   clientExists,
   createCrmTask,
@@ -34,7 +35,7 @@ export async function getCrm(user) {
     status: 200,
     body: {
       tasks: await listCrmTaskRows(user),
-      events: await listCrmEventRows(user.tenantId),
+      events: await listCrmEventRows(user),
     },
   };
 }
@@ -52,11 +53,15 @@ export async function addCrmTask(user, body) {
   if (!await clientExists(body.clientId, user.tenantId)) {
     return { status: 404, body: { error: "Client not found." } };
   }
+  const assignedTo = body.assignedTo || user.id;
+  if (!await assignedUserExists(assignedTo, user.tenantId)) {
+    return { status: 404, body: { error: "User not found." } };
+  }
   const title = body.title || "Follow up";
   const id = await createCrmTask({
     tenantId: user.tenantId,
     clientId: body.clientId,
-    assignedTo: body.assignedTo || user.id,
+    assignedTo,
     type: body.type || "follow_up",
     title,
     dueDate: body.dueDate || null,
@@ -76,10 +81,17 @@ export async function editCrmTask(user, id, body) {
   if (enumValidation) return enumValidation;
   const task = await crmTaskById(id, user.tenantId);
   if (!task) return { status: 404, body: { error: "Task not found." } };
+  if (user.role === "therapist" && Number(task.assigned_to || 0) !== Number(user.id)) {
+    return { status: 404, body: { error: "Task not found." } };
+  }
+  const assignedTo = body.assignedTo || user.id;
+  if (!await assignedUserExists(assignedTo, user.tenantId)) {
+    return { status: 404, body: { error: "User not found." } };
+  }
   const status = ["open", "done", "cancelled"].includes(body.status) ? body.status : "open";
   const title = body.title || "Follow up";
   await updateCrmTask(id, user.tenantId, {
-    assignedTo: body.assignedTo || user.id,
+    assignedTo,
     type: body.type || "follow_up",
     title,
     dueDate: body.dueDate || null,

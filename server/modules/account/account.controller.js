@@ -1,21 +1,9 @@
 import { json } from "../../shared/http/json-response.js";
 import { currentUser, parseCookies } from "../../services/auth.service.js";
 import { changePassword } from "./account.service.js";
+import { readJsonBody } from "../../shared/http/json-body.js";
 
-const loginRequiredError = "״¬״¨ ״×״³״¬„ ״§„״¯״®ˆ„";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+const loginRequiredError = "يجب تسجيل الدخول";
 
 export async function handleAccountRoute(req, res, url) {
   if (req.method !== "POST" || url.pathname !== "/api/account/password") return false;
@@ -26,7 +14,7 @@ export async function handleAccountRoute(req, res, url) {
     return true;
   }
 
-  const result = await changePassword(user, await readBody(req));
+  const result = await changePassword(user, await readJsonBody(req));
   if (result.cookie) res.setHeader("Set-Cookie", result.cookie);
   json(res, result.status, result.body);
   return true;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { access, readdir } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { loginAs } from "./helpers/http-client.js";
 import {
@@ -69,8 +69,10 @@ test("valid restore applies exported SQLite backup in a disposable environment",
     assert.equal(restore.body.ok, true);
     assert.equal(restore.body.restarting, true);
     assert.equal(typeof restore.body.safetyBackup, "string");
-    assert.ok(pathIsInside(serverA.backupsDir, restore.body.safetyBackup));
-    assert.equal(await pathExists(restore.body.safetyBackup), true);
+    assert.equal(restore.body.safetyBackup.includes("/") || restore.body.safetyBackup.includes("\\"), false);
+    const safetyBackupPath = join(serverA.backupsDir, restore.body.safetyBackup);
+    assert.ok(pathIsInside(serverA.backupsDir, safetyBackupPath));
+    assert.equal(await pathExists(safetyBackupPath), true);
 
     await expectRestoreExit(serverA);
     assert.equal(await pathExists(`${serverA.backupsDir}/pending-restore.sqlite`), true);

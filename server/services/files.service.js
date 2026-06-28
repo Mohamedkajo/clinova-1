@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
+import { hasValidFileSignature } from "../shared/uploads/file-signatures.js";
 import {
   archiveClientFile,
   auditFile,
@@ -12,7 +13,7 @@ import {
   updateClientFileUrl,
 } from "../repositories/files.repository.js";
 
-const clientAccessError = "„״§ ״×…„ƒ ״µ„״§״­״© „‡״°״§ ״§„״¹…„";
+const clientAccessError = "لا تملك صلاحية لهذا العميل";
 
 export function safeFileName(name) {
   const parsed = basename(String(name || "file")).replace(/[^\p{L}\p{N}._ -]/gu, "_").trim();
@@ -29,7 +30,7 @@ async function readRawBody(req, maxBytes = config.uploads.maxBytes) {
   for await (const chunk of req) {
     size += chunk.length;
     if (size > maxBytes) {
-      const error = new Error(`׳”׳§׳•׳‘׳¥ ׳’׳“׳•׳ ׳׳“׳™. ׳”׳’׳•׳“׳ ׳”׳׳§׳¡׳™׳׳׳™ ׳”׳•׳ ${Math.round(maxBytes / 1024 / 1024)}MB`);
+      const error = new Error(`הקובץ גדול מדי. הגודל המקסימלי הוא ${Math.round(maxBytes / 1024 / 1024)}MB`);
       error.status = 413;
       throw error;
     }
@@ -42,7 +43,7 @@ export async function readMultipart(req) {
   const contentType = req.headers["content-type"] || "";
   const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[1] || contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[2];
   if (!boundary) {
-    const error = new Error("׳‘׳§׳©׳× ׳”׳¢׳׳׳” ׳׳ ׳×׳§׳™׳ ׳”");
+    const error = new Error("בקשת העלאה לא תקינה");
     error.status = 400;
     throw error;
   }
@@ -94,10 +95,14 @@ export async function uploadClientFile(user, clientId, multipart) {
   }
   const file = multipart.files.file;
   if (!file || file.buffer.length === 0) {
-    return { status: 400, body: { error: "׳™׳© ׳׳‘׳—׳•׳¨ ׳§׳•׳‘׳¥ ׳׳”׳¢׳׳׳”" } };
+    return { status: 400, body: { error: "יש לבחור קובץ להעלאה" } };
   }
   if (!config.uploads.allowedTypes.includes(file.type)) {
-    return { status: 400, body: { error: "׳¡׳•׳’ ׳”׳§׳•׳‘׳¥ ׳׳™׳ ׳• ׳ ׳×׳׳" } };
+    return { status: 400, body: { error: "סוג הקובץ אינו נתמך" } };
+  }
+
+  if (!hasValidFileSignature(file)) {
+    return { status: 400, body: { error: "File content does not match its type." } };
   }
 
   const ext = extname(file.filename).toLowerCase();
@@ -126,15 +131,15 @@ export async function uploadClientFile(user, clientId, multipart) {
 
 export async function getClientFileDownload(user, id) {
   const file = await clientFileById(id, user.tenantId);
-  if (!file) return { status: 404, body: { error: "׳”׳§׳•׳‘׳¥ ׳׳ ׳ ׳׳¦׳" } };
+  if (!file) return { status: 404, body: { error: "הקובץ לא נמצא" } };
   if (!await canSeeClient(user, file.clientId)) {
-    return { status: 403, body: { error: "׳׳™׳ ׳”׳¨׳©׳׳” ׳׳§׳•׳‘׳¥ ׳–׳”" } };
+    return { status: 403, body: { error: "אין הרשאה לקובץ זה" } };
   }
   if (!file.path) {
     return { status: 302, location: file.url };
   }
   if (!existsSync(file.path)) {
-    return { status: 404, body: { error: "׳”׳§׳•׳‘׳¥ ׳׳ ׳ ׳׳¦׳ ׳‘׳׳—׳¡׳•׳" } };
+    return { status: 404, body: { error: "הקובץ לא נמצא באחסון" } };
   }
   const buffer = readFileSync(file.path);
   return { status: 200, file, buffer };

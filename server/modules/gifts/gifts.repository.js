@@ -18,6 +18,16 @@ export async function listGiftCards(tenantId) {
   `).all(tenantId);
 }
 
+export async function giftClientExists(clientId, tenantId) {
+  if (!clientId) return true;
+  return Boolean(await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ?").get(clientId, tenantId));
+}
+
+export async function giftServiceExists(serviceId, tenantId) {
+  if (!serviceId) return true;
+  return Boolean(await db.prepare("SELECT id FROM services WHERE id = ? AND tenant_id = ?").get(serviceId, tenantId));
+}
+
 export async function createGiftCard(tenantId, code, body) {
   const result = await db
     .prepare("INSERT INTO gift_cards (tenant_id, code, from_client_id, to_client_id, service_id, sessions, message) VALUES (?, ?, ?, ?, ?, ?, ?)")

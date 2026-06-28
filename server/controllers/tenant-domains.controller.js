@@ -2,19 +2,7 @@ import { json } from "../shared/http/json-response.js";
 import { apiNotFound } from "../shared/http/api-not-found.js";
 import { requirePlatformOwner } from "../services/permissions.service.js";
 import { addTenantDomain, editTenantDomain, listTenantDomains, removeTenantDomain } from "../services/tenant-domains.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../shared/http/json-body.js";
 
 export async function handleTenantDomainsRoute(req, res, url) {
   const parts = url.pathname.split("/").filter(Boolean);
@@ -36,7 +24,7 @@ export async function handleTenantDomainsRoute(req, res, url) {
   }
 
   if (url.pathname === "/api/tenant/domains" && req.method === "POST") {
-    const result = await addTenantDomain(auth.user, await readBody(req));
+    const result = await addTenantDomain(auth.user, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }
@@ -44,7 +32,7 @@ export async function handleTenantDomainsRoute(req, res, url) {
   if (url.pathname.startsWith("/api/tenant/domains/")) {
     const domainId = Number(url.pathname.split("/").pop());
     if (req.method === "PUT") {
-      const result = await editTenantDomain(auth.user, domainId, await readBody(req));
+      const result = await editTenantDomain(auth.user, domainId, await readJsonBody(req));
       json(res, result.status, result.body);
       return true;
     }

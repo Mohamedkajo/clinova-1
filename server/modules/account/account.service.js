@@ -2,8 +2,8 @@ import { hashPassword, verifyPassword } from "../../security.js";
 import { clearedSessionCookie } from "../../services/auth.service.js";
 import { auditPasswordChange, deleteUserSessions, findUserById, updateUserPassword } from "./account.repository.js";
 
-const shortPasswordError = "ƒ„…״© ״§„…״±ˆ״± ״§„״¬״¯״¯״© ״¬״¨ ״£† ״×ƒˆ† 8 ״£״­״± ״¹„‰ ״§„״£‚„";
-const currentPasswordError = "ƒ„…״© ״§„…״±ˆ״± ״§„״­״§„״© ״÷״± ״µ״­״­״©";
+const shortPasswordError = "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل";
+const currentPasswordError = "كلمة المرور الحالية غير صحيحة";
 
 export async function changePassword(user, body) {
   if (!body.newPassword || String(body.newPassword).length < 8) {

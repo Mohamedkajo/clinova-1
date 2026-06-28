@@ -9,19 +9,7 @@ import {
   signConsent,
   uploadConsent,
 } from "../services/consents.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { CONSENT_SIGNATURE_JSON_LIMIT_BYTES, readJsonBody } from "../shared/http/json-body.js";
 
 function sendDownload(res, result) {
   res.writeHead(200, {
@@ -53,7 +41,7 @@ export async function handleConsentsRoute(req, res, url) {
   }
 
   if (req.method === "POST" && id && parts[3] === "sign") {
-    const result = await signConsent(permission.user, id, await readBody(req));
+    const result = await signConsent(permission.user, id, await readJsonBody(req, { maxBytes: CONSENT_SIGNATURE_JSON_LIMIT_BYTES }));
     json(res, result.status, result.body);
     return true;
   }

@@ -5,7 +5,7 @@ import { json } from "../http/json-response.js";
 import { rowToUser } from "./user-mapper.js";
 
 export const legacyLoginRequiredBody = {
-  error: "״¬״¨ ״×״³״¬„ ״§„״¯״®ˆ„",
+  error: "يجب تسجيل الدخول",
 };
 
 export function parseRequestCookies(req) {

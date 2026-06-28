@@ -1,19 +1,7 @@
 import { json } from "../../shared/http/json-response.js";
 import { requirePermission } from "../../services/permissions.service.js";
 import { addGift, editGift, getGifts } from "./gifts.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../../shared/http/json-body.js";
 
 async function send(res, result) {
   json(res, result.status, result.body);
@@ -35,11 +23,11 @@ export async function handleGiftsRoute(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/gifts") {
-    return send(res, await addGift(auth.user, await readBody(req)));
+    return send(res, await addGift(auth.user, await readJsonBody(req)));
   }
 
   if (req.method === "PUT" && id && parts.length === 3) {
-    return send(res, await editGift(auth.user, id, await readBody(req)));
+    return send(res, await editGift(auth.user, id, await readJsonBody(req)));
   }
 
   return false;

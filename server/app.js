@@ -1,8 +1,11 @@
 import { createServer } from "node:http";
 import { config } from "./config.js";
+import { assertProductionPlatformOwner } from "./db.js";
 import { json } from "./shared/http/json-response.js";
 import { serveStatic } from "./shared/http/static-server.js";
 import { apiNotFound } from "./shared/http/api-not-found.js";
+import { checkRouteRateLimit } from "./shared/http/rate-limit.js";
+import { publicErrorResponse } from "./shared/http/public-error.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { clientsRoutes } from "./routes/clients.routes.js";
 import { appointmentsRoutes } from "./routes/appointments.routes.js";
@@ -236,15 +239,23 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
+      const rateLimit = checkRouteRateLimit(req, url.pathname);
+      if (!rateLimit.allowed) {
+        json(res, rateLimit.status, rateLimit.body);
+        return;
+      }
       await handleApi(req, res, url);
       return;
     }
     serveStatic(req, res, url);
   } catch (error) {
     console.error(error);
-    json(res, error.status || 500, { error: error.message || "حدث خطأ في السيرفر" });
+    const response = publicErrorResponse(error);
+    json(res, response.status, response.body);
   }
 });
+
+await assertProductionPlatformOwner();
 
 server.listen(config.port, config.host, () => {
   console.log(`Clinic system running on http://${config.host}:${config.port}`);

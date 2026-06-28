@@ -1,6 +1,7 @@
 import { hashPassword } from "../../security.js";
 import {
   auditTenantAdminPasswordReset,
+  deleteTenantAdminSessions,
   findTenantAdmin,
   findTenantForPasswordReset,
   platformTenants,
@@ -18,6 +19,7 @@ export async function resetTenantAdminPassword(user, tenantId, body) {
   if (!owner) return { status: 404, body: { error: "No active clinic admin was found for this clinic." } };
 
   await updateTenantAdminPassword(tenantId, owner.id, hashPassword(newPassword));
+  await deleteTenantAdminSessions(tenantId, owner.id);
   await auditTenantAdminPasswordReset(user, tenantId, owner.id);
   return {
     status: 200,

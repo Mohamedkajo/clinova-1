@@ -130,13 +130,27 @@ export async function initDatabase() {
   await seedSettings(1);
 
   const userCount = (await db.prepare("SELECT COUNT(*) AS count FROM users").get()).count;
-  if (Number(userCount) === 0) await seedDatabase();
+  if (Number(userCount) === 0 && process.env.NODE_ENV !== "production") await seedDatabase();
   await seedDevelopmentPlatformOwner();
+  await assertProductionPlatformOwner();
 }
 
 export async function checkDatabaseConnection() {
   const row = await db.prepare("SELECT 1 AS ok").get();
   return row?.ok === 1 || row?.ok === "1";
+}
+
+export async function assertProductionPlatformOwner() {
+  if (process.env.NODE_ENV !== "production") return;
+  const owner = await db.prepare(`
+    SELECT id
+    FROM users
+    WHERE active = 1 AND COALESCE(is_platform_owner, 0) = 1
+    LIMIT 1
+  `).get();
+  if (!owner) {
+    throw new Error("Production startup blocked: no active Platform Owner exists.");
+  }
 }
 
 async function initSqlite() {
@@ -460,7 +474,9 @@ async function initSqlite() {
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_entity ON message_logs(entity, entity_id)");
   await db.prepare("UPDATE users SET email = username || '@clinova.local' WHERE tenant_id = 1 AND COALESCE(email, '') = '' AND username NOT LIKE '%@%'").run();
-  await db.prepare("UPDATE users SET is_platform_owner = 1 WHERE tenant_id = 1 AND username = 'admin'").run();
+  if (process.env.NODE_ENV === "test") {
+    await db.prepare("UPDATE users SET is_platform_owner = 1 WHERE tenant_id = 1 AND username = 'admin'").run();
+  }
 }
 
 async function initPostgres() {

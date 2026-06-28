@@ -15,7 +15,9 @@
   </head>
   <body>
     <main id="app"><div class="muted">טוען...</div></main>
-    <script>
+    <script type="module">
+      import { safeSetText } from "./safe-html.js";
+
       const token = new URLSearchParams(location.search).get("token") || "";
       let rating = 5;
       const app = document.getElementById("app");
@@ -26,14 +28,46 @@
         return data;
       }
       function render(row) {
-        app.innerHTML = `<h1>נשמח לחוות דעתך</h1><div class="muted">${row.clientName || ""} · ${row.serviceName || ""} · ${row.date || ""} ${row.time || ""}</div><div class="stars">${[1,2,3,4,5].map(n => `<button type="button" data-rate="${n}" class="${n <= rating ? "active" : ""}">★</button>`).join("")}</div><textarea id="comment" placeholder="אפשר לכתוב הערה קצרה"></textarea><button class="submit" id="send">שליחה</button>`;
-        app.querySelectorAll("[data-rate]").forEach((button) => button.onclick = () => { rating = Number(button.dataset.rate); render(row); });
-        document.getElementById("send").onclick = async () => {
-          await api(`/api/public/feedback/${encodeURIComponent(token)}`, { method: "POST", body: { rating, comment: document.getElementById("comment").value } });
-          app.innerHTML = `<div class="done">תודה רבה, המשוב התקבל.</div>`;
+        const title = document.createElement("h1");
+        safeSetText(title, "נשמח לחוות דעתך");
+        const details = document.createElement("div");
+        details.className = "muted";
+        safeSetText(details, `${row.clientName || ""} · ${row.serviceName || ""} · ${row.date || ""} ${row.time || ""}`);
+        const stars = document.createElement("div");
+        stars.className = "stars";
+        for (const value of [1, 2, 3, 4, 5]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.rate = String(value);
+          button.classList.toggle("active", value <= rating);
+          safeSetText(button, "★");
+          button.onclick = () => {
+            rating = value;
+            render(row);
+          };
+          stars.append(button);
+        }
+        const comment = document.createElement("textarea");
+        comment.id = "comment";
+        comment.placeholder = "אפשר לכתוב הערה קצרה";
+        const send = document.createElement("button");
+        send.className = "submit";
+        send.id = "send";
+        safeSetText(send, "שליחה");
+        send.onclick = async () => {
+          await api(`/api/public/feedback/${encodeURIComponent(token)}`, { method: "POST", body: { rating, comment: comment.value } });
+          const done = document.createElement("div");
+          done.className = "done";
+          safeSetText(done, "תודה רבה, המשוב התקבל.");
+          app.replaceChildren(done);
         };
+        app.replaceChildren(title, details, stars, comment, send);
       }
-      api(`/api/public/feedback/${encodeURIComponent(token)}`).then(render).catch((err) => app.innerHTML = `<div>${err.message}</div>`);
+      api(`/api/public/feedback/${encodeURIComponent(token)}`).then(render).catch((err) => {
+        const error = document.createElement("div");
+        safeSetText(error, err.message);
+        app.replaceChildren(error);
+      });
     </script>
   </body>
 </html>

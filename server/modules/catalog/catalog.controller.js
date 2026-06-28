@@ -11,19 +11,7 @@ import {
   removeCategory,
   removeService,
 } from "./catalog.service.js";
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    const error = new Error("Invalid JSON body");
-    error.status = 400;
-    throw error;
-  }
-}
+import { readJsonBody } from "../../shared/http/json-body.js";
 
 function catalogParts(url) {
   return url.pathname.split("/").filter(Boolean);
@@ -56,7 +44,7 @@ export async function handleCatalogRoute(req, res, url) {
     }
     const { user } = auth;
     if (req.method === "GET") return send(res, await getCategories(user));
-    const body = await readBody(req);
+    const body = await readJsonBody(req);
     if (req.method === "POST") return send(res, await addCategory(user, body));
     if (req.method === "PUT" && id) return send(res, await editCategory(user, id, body));
     if (req.method === "DELETE" && id) return send(res, await removeCategory(user, id));
@@ -70,7 +58,7 @@ export async function handleCatalogRoute(req, res, url) {
     }
     const { user } = auth;
     if (req.method === "GET") return send(res, await getServices(user));
-    const body = await readBody(req);
+    const body = await readJsonBody(req);
     if (req.method === "POST") return send(res, await addService(user, body));
     if (req.method === "PUT" && id) return send(res, await editService(user, id, body));
     if (req.method === "DELETE" && id) return send(res, await removeService(user, id));

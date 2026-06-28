@@ -1,3 +1,5 @@
+import { escapeAttribute, escapeHtml } from "./safe-html.js";
+
 const state = {
   user: null,
   page: "dashboard",
@@ -7,11 +9,11 @@ const state = {
   calendarDate: new Date().toISOString().slice(0, 10),
   quickSearch: "",
   quickResults: null,
-  lang: localStorage.getItem("clinova-lang") || "he",
+  lang: ["he", "ar"].includes(localStorage.getItem("clinova-lang")) ? localStorage.getItem("clinova-lang") : "he",
   reportTab: "overview",
 };
 
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.6.2";
 
 let tr;
 let pageLabel;
@@ -42,16 +44,16 @@ let renderApp;
 let renderLogin;
 
 const labels = {
-  calendar: "״§„״×‚ˆ…",
-  dashboard: "„ˆ״­״© ״§„״×״­ƒ…",
-  appointments: "״§„…ˆ״§״¹״¯",
-  clients: "״§„״¹…„״§״¡",
-  categories: "״§„״£‚״³״§…",
-  services: "״§„״®״¯…״§״×",
-  users: "״§„…״³״×״®״¯…ˆ†",
-  reports: "״§„״×‚״§״±״±",
-  audit: "״³״¬„ ״§„†״´״§״·",
-  settings: "״§„״¥״¹״¯״§״¯״§״×",
+  calendar: "التقويم",
+  dashboard: "لوحة التحكم",
+  appointments: "المواعيد",
+  clients: "العملاء",
+  categories: "الأقسام",
+  services: "الخدمات",
+  users: "المستخدمون",
+  reports: "التقارير",
+  audit: "سجل النشاط",
+  settings: "الإعدادات",
 };
 
 const navByRole = {
@@ -62,96 +64,96 @@ const navByRole = {
 
 const i18n = {
   ar: {
-    clinicSystem: "״¥״¯״§״±״© ״§„״¹״§״¯״©",
-    quickSearch: "״¨״­״« ״³״±״¹...",
-    language: "״§„„״÷״©",
-    logout: "״®״±ˆ״¬",
-    add: "״¥״¶״§״©",
-    edit: "״×״¹״¯„",
-    delete: "״­״°",
-    close: "״¥״÷„״§‚",
-    save: "״­״¸",
-    receipt: "״¥״µ״§„",
-    newAppointment: "…ˆ״¹״¯ ״¬״¯״¯",
-    newClient: "״¹…„ ״¬״¯״¯",
-    noData: "„״§ ״×ˆ״¬״¯ ״¨״§†״§״×",
-    searching: "״¬״§״± ״§„״¨״­״«...",
-    noResults: "„״§ ״×ˆ״¬״¯ †״×״§״¦״¬",
+    clinicSystem: "إدارة العيادة",
+    quickSearch: "بحث سريع...",
+    language: "اللغة",
+    logout: "خروج",
+    add: "إضافة",
+    edit: "تعديل",
+    delete: "حذف",
+    close: "إغلاق",
+    save: "حفظ",
+    receipt: "إيصال",
+    newAppointment: "موعد جديد",
+    newClient: "عميل جديد",
+    noData: "لا توجد بيانات",
+    searching: "جاري البحث...",
+    noResults: "لا توجد نتائج",
     labels: {
-      dashboard: "„ˆ״­״© ״§„״×״­ƒ…",
-      calendar: "״§„״×‚ˆ…",
-      appointments: "״§„…ˆ״§״¹״¯",
-      clients: "״§„״¹…„״§״¡",
-      categories: "״§„״£‚״³״§…",
-      services: "״§„״®״¯…״§״×",
-      users: "״§„…״³״×״®״¯…ˆ†",
-      reports: "״§„״×‚״§״±״±",
-      audit: "״³״¬„ ״§„†״´״§״·",
-      settings: "״§„״¥״¹״¯״§״¯״§״×",
+      dashboard: "لوحة التحكم",
+      calendar: "التقويم",
+      appointments: "المواعيد",
+      clients: "العملاء",
+      categories: "الأقسام",
+      services: "الخدمات",
+      users: "المستخدمون",
+      reports: "التقارير",
+      audit: "سجل النشاط",
+      settings: "الإعدادات",
     },
     subtitles: {
-      dashboard: "†״¸״±״© ״³״±״¹״© ״¹„‰ ˆ… ״§„״¹…„ ˆ״§„״£״¯״§״¡",
-      calendar: "״¹״±״¶ ״§„…ˆ״§״¹״¯ ״­״³״¨ ״§„״´‡״± ״£ˆ ״§„״£״³״¨ˆ״¹ ״£ˆ ״§„ˆ…",
-      appointments: "״×†״¸… ״§„…ˆ״§״¹״¯ ˆ…†״¹ ״§„״×״¹״§״±״¶״§״×",
-      clients: "…„״§״× ״§„״¹…„״§״¡ ˆ״¨״§†״§״× ״§„״×ˆ״§״µ„",
-      categories: "״×״µ† ״§„״®״¯…״§״× ״¯״§״®„ ״§„״¹״§״¯״©",
-      services: "״§„״£״³״¹״§״± ˆ״§„…״¯״¯ ˆ״§„״®״¯…״§״× ״§„״¹״§„״©",
-      users: "״§„״µ„״§״­״§״× ˆ״­״³״§״¨״§״× ״§„״±‚",
-      reports: "…„״®״µ״§״× ״§„״¥״±״§״¯ ˆ״§„״¥†״¬״§״²",
-      audit: "״¢״®״± ״§„†״´״§״·״§״× ״¯״§״®„ ״§„†״¸״§…",
-      settings: "״¥״¹״¯״§״¯״§״× ״§„״­״³״§״¨ ˆ״§„״¹״§״¯״©",
+      dashboard: "نظرة سريعة على يوم العمل والأداء",
+      calendar: "عرض المواعيد حسب الشهر أو الأسبوع أو اليوم",
+      appointments: "تنظيم المواعيد ومنع التعارضات",
+      clients: "ملفات العملاء وبيانات التواصل",
+      categories: "تصنيف الخدمات داخل العيادة",
+      services: "الأسعار والمدد والخدمات الفعالة",
+      users: "الصلاحيات وحسابات الفريق",
+      reports: "ملخصات الإيراد والإنجاز",
+      audit: "آخر النشاطات داخل النظام",
+      settings: "إعدادات الحساب والعيادة",
     },
-    roles: { admin: "…״¯״±", reception: "״§״³״×‚״¨״§„", therapist: "…״¹״§„״¬״©" },
-    status: { pending: "‚״¯ ״§„״§†״×״¸״§״±", done: "״×…", cancelled: "…„״÷" },
-    payment: { unpaid: "״÷״± …״¯ˆ״¹", paid: "…״¯ˆ״¹", deposit: "״¹״±״¨ˆ†" },
-    searchGroups: { clients: "״§„״¹…„״§״¡", appointments: "״§„…ˆ״§״¹״¯", services: "״§„״®״¯…״§״×", file: "…„", appointment: "…ˆ״¹״¯" },
-    table: { date: "״§„״×״§״±״®", time: "״§„ˆ‚״×", client: "״§„״¹…„", service: "״§„״®״¯…״©", therapist: "״§„…״¹״§„״¬״©", price: "״§„״³״¹״±", payment: "״§„״¯״¹", status: "״§„״­״§„״©" },
+    roles: { admin: "مدير", reception: "استقبال", therapist: "معالجة" },
+    status: { pending: "قيد الانتظار", done: "تم", cancelled: "ملغي" },
+    payment: { unpaid: "غير مدفوع", paid: "مدفوع", deposit: "عربون" },
+    searchGroups: { clients: "العملاء", appointments: "المواعيد", services: "الخدمات", file: "ملف", appointment: "موعد" },
+    table: { date: "التاريخ", time: "الوقت", client: "العميل", service: "الخدمة", therapist: "المعالجة", price: "السعر", payment: "الدفع", status: "الحالة" },
   },
   he: {
-    clinicSystem: "׳ ׳™׳”׳•׳ ׳§׳׳™׳ ׳™׳§׳”",
-    quickSearch: "׳—׳™׳₪׳•׳© ׳׳”׳™׳¨...",
-    language: "׳©׳₪׳”",
-    logout: "׳™׳¦׳™׳׳”",
-    add: "׳”׳•׳¡׳₪׳”",
-    edit: "׳¢׳¨׳™׳›׳”",
-    delete: "׳׳—׳™׳§׳”",
-    close: "׳¡׳’׳™׳¨׳”",
-    save: "׳©׳׳™׳¨׳”",
-    receipt: "׳§׳‘׳׳”",
-    newAppointment: "׳×׳•׳¨ ׳—׳“׳©",
-    newClient: "׳׳§׳•׳— ׳—׳“׳©",
-    noData: "׳׳™׳ ׳ ׳×׳•׳ ׳™׳",
-    searching: "׳׳—׳₪׳©...",
-    noResults: "׳׳ ׳ ׳׳¦׳׳• ׳×׳•׳¦׳׳•׳×",
+    clinicSystem: "ניהול קליניקה",
+    quickSearch: "חיפוש מהיר...",
+    language: "שפה",
+    logout: "יציאה",
+    add: "הוספה",
+    edit: "עריכה",
+    delete: "מחיקה",
+    close: "סגירה",
+    save: "שמירה",
+    receipt: "קבלה",
+    newAppointment: "תור חדש",
+    newClient: "לקוח חדש",
+    noData: "אין נתונים",
+    searching: "מחפש...",
+    noResults: "לא נמצאו תוצאות",
     labels: {
-      dashboard: "׳׳•׳— ׳‘׳§׳¨׳”",
-      calendar: "׳™׳•׳׳",
-      appointments: "׳×׳•׳¨׳™׳",
-      clients: "׳׳§׳•׳—׳•׳×",
-      categories: "׳§׳˜׳’׳•׳¨׳™׳•׳×",
-      services: "׳©׳™׳¨׳•׳×׳™׳",
-      users: "׳׳©׳×׳׳©׳™׳",
-      reports: "׳“׳•׳—׳•׳×",
-      audit: "׳™׳•׳׳ ׳₪׳¢׳™׳׳•׳×",
-      settings: "׳”׳’׳“׳¨׳•׳×",
+      dashboard: "לוח בקרה",
+      calendar: "יומן",
+      appointments: "תורים",
+      clients: "לקוחות",
+      categories: "קטגוריות",
+      services: "שירותים",
+      users: "משתמשים",
+      reports: "דוחות",
+      audit: "יומן פעילות",
+      settings: "הגדרות",
     },
     subtitles: {
-      dashboard: "׳׳‘׳˜ ׳׳”׳™׳¨ ׳¢׳ ׳™׳•׳ ׳”׳¢׳‘׳•׳“׳” ׳•׳”׳‘׳™׳¦׳•׳¢׳™׳",
-      calendar: "׳×׳¦׳•׳’׳× ׳×׳•׳¨׳™׳ ׳׳₪׳™ ׳—׳•׳“׳©, ׳©׳‘׳•׳¢ ׳׳• ׳™׳•׳",
-      appointments: "׳ ׳™׳”׳•׳ ׳×׳•׳¨׳™׳ ׳•׳׳ ׳™׳¢׳× ׳”׳×׳ ׳’׳©׳•׳™׳•׳×",
-      clients: "׳×׳™׳§׳™ ׳׳§׳•׳—׳•׳× ׳•׳₪׳¨׳˜׳™ ׳§׳©׳¨",
-      categories: "׳¡׳™׳•׳•׳’ ׳”׳©׳™׳¨׳•׳×׳™׳ ׳‘׳§׳׳™׳ ׳™׳§׳”",
-      services: "׳׳—׳™׳¨׳™׳, ׳׳©׳›׳™׳ ׳•׳©׳™׳¨׳•׳×׳™׳ ׳₪׳¢׳™׳׳™׳",
-      users: "׳”׳¨׳©׳׳•׳× ׳•׳—׳©׳‘׳•׳ ׳•׳× ׳¦׳•׳•׳×",
-      reports: "׳¡׳™׳›׳•׳׳™ ׳”׳›׳ ׳¡׳•׳× ׳•׳‘׳™׳¦׳•׳¢׳™׳",
-      audit: "׳₪׳¢׳™׳׳•׳× ׳׳—׳¨׳•׳ ׳” ׳‘׳׳¢׳¨׳›׳×",
-      settings: "׳”׳’׳“׳¨׳•׳× ׳—׳©׳‘׳•׳ ׳•׳§׳׳™׳ ׳™׳§׳”",
+      dashboard: "מבט מהיר על יום העבודה והביצועים",
+      calendar: "תצוגת תורים לפי חודש, שבוע או יום",
+      appointments: "ניהול תורים ומניעת התנגשויות",
+      clients: "תיקי לקוחות ופרטי קשר",
+      categories: "סיווג השירותים בקליניקה",
+      services: "מחירים, משכים ושירותים פעילים",
+      users: "הרשאות וחשבונות צוות",
+      reports: "סיכומי הכנסות וביצועים",
+      audit: "פעילות אחרונה במערכת",
+      settings: "הגדרות חשבון וקליניקה",
     },
-    roles: { admin: "׳׳ ׳”׳", reception: "׳§׳‘׳׳”", therapist: "׳׳˜׳₪׳׳×" },
-    status: { pending: "׳׳׳×׳™׳", done: "׳‘׳•׳¦׳¢", cancelled: "׳‘׳•׳˜׳" },
-    payment: { unpaid: "׳׳ ׳©׳•׳׳", paid: "׳©׳•׳׳", deposit: "׳׳§׳“׳׳”" },
-    searchGroups: { clients: "׳׳§׳•׳—׳•׳×", appointments: "׳×׳•׳¨׳™׳", services: "׳©׳™׳¨׳•׳×׳™׳", file: "׳×׳™׳§", appointment: "׳×׳•׳¨" },
-    table: { date: "׳×׳׳¨׳™׳", time: "׳©׳¢׳”", client: "׳׳§׳•׳—", service: "׳©׳™׳¨׳•׳×", therapist: "׳׳˜׳₪׳׳×", price: "׳׳—׳™׳¨", payment: "׳×׳©׳׳•׳", status: "׳¡׳˜׳˜׳•׳¡" },
+    roles: { admin: "מנהל", reception: "קבלה", therapist: "מטפלת" },
+    status: { pending: "ממתין", done: "בוצע", cancelled: "בוטל" },
+    payment: { unpaid: "לא שולם", paid: "שולם", deposit: "מקדמה" },
+    searchGroups: { clients: "לקוחות", appointments: "תורים", services: "שירותים", file: "תיק", appointment: "תור" },
+    table: { date: "תאריך", time: "שעה", client: "לקוח", service: "שירות", therapist: "מטפלת", price: "מחיר", payment: "תשלום", status: "סטטוס" },
   },
 };
 
@@ -194,7 +196,7 @@ async function api(path, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error || "״­״¯״« ״®״·״£");
+    const error = new Error(data.error || "حدث خطأ");
     error.code = data.error || "";
     error.details = data.details || {};
     throw error;
@@ -206,16 +208,22 @@ function html(strings, ...values) {
   return strings.map((part, index) => part + (values[index] ?? "")).join("");
 }
 
+const trustedMarkup = Symbol("trustedMarkup");
+
+function rawHtml(value = "") {
+  return { [trustedMarkup]: true, value: String(value ?? "") };
+}
+
+function renderText(value = "") {
+  return value?.[trustedMarkup] ? value.value : escapeHtml(value);
+}
+
 function mount(markup) {
   document.getElementById("app").innerHTML = markup;
 }
 
 function escapeAttr(value = "") {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return escapeAttribute(value);
 }
 
 function logoSrc() {
@@ -472,13 +480,13 @@ function renderLoginLegacy(error = "") {
           <img class="brand-logo" src="${logoSrc()}" alt="Clinova">
           <div>
             <h1>Clinova</h1>
-            <div class="muted">†״¸״§… ״¥״¯״§״±״© ״§„״¹״§״¯״©</div>
+            <div class="muted">نظام إدارة العيادة</div>
           </div>
         </div>
         ${error ? `<div class="alert">${error}</div>` : ""}
-        <div class="field"><label>״§״³… ״§„…״³״×״®״¯…</label><input name="username" autocomplete="username" required></div>
-        <div class="field"><label>ƒ„…״© ״§„…״±ˆ״±</label><input name="password" type="password" autocomplete="current-password" required></div>
-        <button class="btn" style="width:100%">״×״³״¬„ ״§„״¯״®ˆ„</button>
+        <div class="field"><label>اسم المستخدم</label><input name="username" autocomplete="username" required></div>
+        <div class="field"><label>كلمة المرور</label><input name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn" style="width:100%">تسجيل الدخول</button>
         <div class="version-badge">v${APP_VERSION}</div>
       </form>
     </main>
@@ -525,7 +533,7 @@ function renderAppLegacy() {
       <aside class="sidebar">
         <div class="brand">
           <img class="brand-logo" src="${logoSrc()}" alt="Clinova">
-          <div><h3>Clinova</h3><div style="opacity:.75;font-size:12px">״¥״¯״§״±״© ״§„״¹״§״¯״©</div></div>
+          <div><h3>Clinova</h3><div style="opacity:.75;font-size:12px">إدارة العيادة</div></div>
         </div>
         <nav class="nav">
           ${nav.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}">${pageLabel(page)}</button>`).join("")}
@@ -533,7 +541,7 @@ function renderAppLegacy() {
         <div class="user-box">
           <strong>${state.user.name}</strong>
           <span style="opacity:.75">${roleLabel(state.user.role)}</span>
-          <button class="btn ghost" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,.35)">״®״±ˆ״¬</button>
+          <button class="btn ghost" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,.35)">خروج</button>
         </div>
       </aside>
       <main class="main">
@@ -578,9 +586,9 @@ pageSubtitle = function () {
 topActionI18n = function () {
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${tr("newAppointment")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${tr("newClient")}</button>`;
-  if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${state.lang === "he" ? "׳”׳¢׳׳׳× PDF" : "״±״¹ PDF"}</button>`;
-  if (state.page === "feedback") return `<button class="btn" data-new-feedback>${state.lang === "he" ? "׳©׳׳™׳—׳× ׳׳©׳•׳‘" : "״¥״±״³״§„ ״×‚…"}</button>`;
-  if (state.page === "gifts") return `<button class="btn" data-new-gift>${state.lang === "he" ? "׳›׳¨׳˜׳™׳¡ ׳׳×׳ ׳”" : "ƒ״±״× ‡״¯״©"}</button>`;
+  if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${state.lang === "he" ? "העלאת PDF" : "رفع PDF"}</button>`;
+  if (state.page === "feedback") return `<button class="btn" data-new-feedback>${state.lang === "he" ? "שליחת משוב" : "إرسال تقييم"}</button>`;
+  if (state.page === "gifts") return `<button class="btn" data-new-gift>${state.lang === "he" ? "כרטיס מתנה" : "كرت هدية"}</button>`;
   if (["users", "categories", "services"].includes(state.page)) return `<button class="btn" data-new="${state.page}">${tr("add")}</button>`;
   return "";
 }
@@ -599,7 +607,7 @@ renderQuickSearchLive = function () {
 
 function appointmentTable(rows, actions) {
   const heads = [tr("table.date"), tr("table.time"), tr("table.client"), tr("table.service"), tr("table.therapist"), tr("table.price"), tr("table.payment"), tr("table.status")];
-  const actionLabel = state.lang === "he" ? "׳₪׳¢׳•׳׳•׳×" : "״¥״¬״±״§״¡״§״×";
+  const actionLabel = state.lang === "he" ? "פעולות" : "إجراءات";
   return html`
     <div class="table-wrap responsive-table appointment-table">
       <table>
@@ -611,7 +619,7 @@ function appointmentTable(rows, actions) {
               <td data-label="${escapeAttr(heads[5])}">${currency()}${Number(a.price || 0).toLocaleString()}</td>
               <td data-label="${escapeAttr(heads[6])}"><span class="pill ${a.paymentStatus || "unpaid"}">${paymentLabel[a.paymentStatus || "unpaid"]}</span></td>
               <td data-label="${escapeAttr(heads[7])}"><span class="pill ${a.status}">${statusLabel[a.status]}</span></td>
-              ${actions ? `<td class="actions" data-label="${escapeAttr(actionLabel)}"><button class="btn secondary" data-sign-appointment="${a.id}">${state.lang === "he" ? "׳˜׳•׳₪׳¡" : "״¥‚״±״§״±"}</button><button class="btn secondary" data-receipt="${a.id}">${tr("receipt")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${tr("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${tr("delete")}</button>` : ""}</td>` : ""}
+              ${actions ? `<td class="actions" data-label="${escapeAttr(actionLabel)}"><button class="btn secondary" data-sign-appointment="${a.id}">${state.lang === "he" ? "טופס" : "إقرار"}</button><button class="btn secondary" data-receipt="${a.id}">${tr("receipt")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${tr("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${tr("delete")}</button>` : ""}</td>` : ""}
             </tr>`).join("") : `<tr><td colspan="${actions ? 9 : 8}" class="muted">${tr("noData")}</td></tr>`}
         </tbody>
       </table>
@@ -624,14 +632,15 @@ function roleLabelLegacyFinal(role) {
 }
 
 yesNo = function (value) {
-  return value ? (state.lang === "he" ? "׳›׳" : "†״¹…") : (state.lang === "he" ? "׳׳" : "„״§");
+  return value ? (state.lang === "he" ? "כן" : "نعم") : (state.lang === "he" ? "לא" : "لا");
 }
 
 function statCard(icon, value, label, tone = "blue") {
-  return html`<div class="card stat-card ${tone}">
-    <div class="stat-icon">${icon}</div>
-    <strong>${value}</strong>
-    <span>${label}</span>
+  const toneClass = ["blue", "green", "gold", "purple", "red"].includes(tone) ? tone : "blue";
+  return html`<div class="card stat-card ${toneClass}">
+    <div class="stat-icon">${escapeHtml(icon)}</div>
+    <strong>${escapeHtml(value)}</strong>
+    <span>${escapeHtml(label)}</span>
   </div>`;
 }
 
@@ -663,12 +672,12 @@ renderDashboardHe = function () {
   const revenue = done.reduce((sum, a) => sum + Number(a.price || 0), 0);
   return html`
     <div class="grid stats">
-      ${statCard("נ“…", appointments.filter((a) => a.date === today).length, state.lang === "he" ? "׳×׳•׳¨׳™׳ ׳”׳™׳•׳" : "…ˆ״§״¹״¯ ״§„ˆ…", "blue")}
-      ${statCard("נ‘¥", clients.length, state.lang === "he" ? "׳¡׳”׳´׳› ׳׳§׳•׳—׳•׳×" : "״¥״¬…״§„ ״§„״¹…„״§״¡", "green")}
-      ${statCard("ג…", done.length, state.lang === "he" ? "׳×׳•׳¨׳™׳ ׳©׳”׳•׳©׳׳׳•" : "…ˆ״§״¹״¯ …ƒ״×…„״©", "green")}
-      ${statCard("ג‚×", `${currency()}${revenue.toLocaleString()}`, state.lang === "he" ? "׳”׳›׳ ׳¡׳•׳×" : "״§„״¥״±״§״¯״§״×", "gold")}
+      ${statCard("📅", appointments.filter((a) => a.date === today).length, state.lang === "he" ? "תורים היום" : "مواعيد اليوم", "blue")}
+      ${statCard("👥", clients.length, state.lang === "he" ? "סה״כ לקוחות" : "إجمالي العملاء", "green")}
+      ${statCard("✅", done.length, state.lang === "he" ? "תורים שהושלמו" : "مواعيد مكتملة", "green")}
+      ${statCard("₪", `${currency()}${revenue.toLocaleString()}`, state.lang === "he" ? "הכנסות" : "الإيرادات", "gold")}
     </div>
-    <div class="card"><h3>${state.lang === "he" ? "׳×׳•׳¨׳™׳ ׳׳—׳¨׳•׳ ׳™׳" : "״¢״®״± ״§„…ˆ״§״¹״¯"}</h3>${appointmentTable(appointments.slice(0, 6), false)}</div>
+    <div class="card"><h3>${state.lang === "he" ? "תורים אחרונים" : "آخر المواعيد"}</h3>${appointmentTable(appointments.slice(0, 6), false)}</div>
   `;
 }
 
@@ -676,7 +685,7 @@ renderCalendarHe = function () {
   const anchor = parseDate(state.calendarDate);
   const view = state.calendarView;
   const days = view === "day" ? [anchor] : view === "week" ? weekDays(anchor) : monthDays(anchor);
-  const names = state.lang === "he" ? { month: "׳—׳•׳“׳©", week: "׳©׳‘׳•׳¢", day: "׳™׳•׳", prev: "׳”׳§׳•׳“׳", today: "׳”׳™׳•׳", next: "׳”׳‘׳" } : { month: "״´‡״±", week: "״£״³״¨ˆ״¹", day: "ˆ…", prev: "״§„״³״§״¨‚", today: "״§„ˆ…", next: "״§„״×״§„" };
+  const names = state.lang === "he" ? { month: "חודש", week: "שבוע", day: "יום", prev: "הקודם", today: "היום", next: "הבא" } : { month: "شهر", week: "أسبوع", day: "يوم", prev: "السابق", today: "اليوم", next: "التالي" };
   return html`
     <div class="calendar-shell">
       <div class="toolbar calendar-toolbar">
@@ -698,8 +707,8 @@ renderAppointmentsHe = function () {
   });
   return html`
     <div class="toolbar">
-      <input data-filter="appointments" placeholder="${state.lang === "he" ? "׳—׳™׳₪׳•׳© ׳‘׳×׳•׳¨׳™׳..." : "״¨״­״«  ״§„…ˆ״§״¹״¯..."}" value="${escapeAttr(state.filters.appointments)}">
-      <select data-filter="appointmentStatus"><option value="all" ${status === "all" ? "selected" : ""}>${state.lang === "he" ? "׳›׳ ׳”׳¡׳˜׳˜׳•׳¡׳™׳" : "ƒ„ ״§„״­״§„״§״×"}</option><option value="pending" ${status === "pending" ? "selected" : ""}>${statusLabel.pending}</option><option value="done" ${status === "done" ? "selected" : ""}>${statusLabel.done}</option><option value="cancelled" ${status === "cancelled" ? "selected" : ""}>${statusLabel.cancelled}</option></select>
+      <input data-filter="appointments" placeholder="${state.lang === "he" ? "חיפוש בתורים..." : "بحث في المواعيد..."}" value="${escapeAttr(state.filters.appointments)}">
+      <select data-filter="appointmentStatus"><option value="all" ${status === "all" ? "selected" : ""}>${state.lang === "he" ? "כל הסטטוסים" : "كل الحالات"}</option><option value="pending" ${status === "pending" ? "selected" : ""}>${statusLabel.pending}</option><option value="done" ${status === "done" ? "selected" : ""}>${statusLabel.done}</option><option value="cancelled" ${status === "cancelled" ? "selected" : ""}>${statusLabel.cancelled}</option></select>
       <button class="btn secondary" data-export="appointments">CSV</button>
     </div>
     <div class="card">${appointmentTable(rows, true)}</div>
@@ -710,9 +719,9 @@ renderClientsHe = function () {
   const canWrite = state.user.role !== "therapist";
   const search = state.filters.clients.trim().toLowerCase();
   const clients = state.data.clients.filter((c) => `${c.fname} ${c.lname} ${c.phone} ${c.email || ""} ${c.notes || ""}`.toLowerCase().includes(search));
-  const h = state.lang === "he" ? ["׳©׳", "׳˜׳׳₪׳•׳", "׳׳™׳׳™׳™׳", "׳׳˜׳₪׳׳×", "׳”׳¢׳¨׳•׳×"] : ["״§„״§״³…", "״§„‡״§״×", "״§„״¨״±״¯", "״§„…״¹״§„״¬״©", "…„״§״­״¸״§״×"];
+  const h = state.lang === "he" ? ["שם", "טלפון", "אימייל", "מטפלת", "הערות"] : ["الاسم", "الهاتف", "البريد", "المعالجة", "ملاحظات"];
   return html`
-    <div class="toolbar"><input data-filter="clients" placeholder="${state.lang === "he" ? "׳—׳™׳₪׳•׳© ׳׳§׳•׳—..." : "״¨״­״« ״¹† ״¹…„..."}" value="${escapeAttr(state.filters.clients)}"><button class="btn secondary" data-export="clients">CSV</button></div>
+    <div class="toolbar"><input data-filter="clients" placeholder="${state.lang === "he" ? "חיפוש לקוח..." : "بحث عن عميل..."}" value="${escapeAttr(state.filters.clients)}"><button class="btn secondary" data-export="clients">CSV</button></div>
     <div class="table-wrap"><table><thead><tr>${h.map((x) => `<th>${x}</th>`).join("")}<th></th></tr></thead><tbody>
       ${clients.map((c) => `<tr><td>${c.fname} ${c.lname}</td><td>${c.phone}</td><td>${c.email || "-"}</td><td>${userName(c.therapistId)}</td><td>${c.notes || "-"}</td><td class="actions"><button class="btn secondary" data-profile="${c.id}">${tr("searchGroups.file")}</button>${canWrite ? `<button class="btn secondary" data-edit="clients" data-id="${c.id}">${tr("edit")}</button><button class="btn danger" data-delete="clients" data-id="${c.id}">${tr("delete")}</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">${tr("noData")}</td></tr>`}
     </tbody></table></div>
@@ -721,13 +730,13 @@ renderClientsHe = function () {
 
 function crmStageLabel(stage) {
   const freshMap = state.lang === "he"
-    ? { lead: "׳׳™׳“", qualified: "׳׳×׳׳™׳", active: "׳₪׳¢׳™׳", follow_up: "׳׳¢׳§׳‘", vip: "VIP", lost: "׳׳‘׳“", inactive: "׳׳ ׳₪׳¢׳™׳" }
-    : { lead: "״¹…„ …״­״×…„", qualified: "…״₪‡„", active: "†״´״·", follow_up: "…״×״§״¨״¹״©", vip: "VIP", lost: "…‚ˆ״¯", inactive: "״÷״± †״´״·" };
+    ? { lead: "ליד", qualified: "מתאים", active: "פעיל", follow_up: "מעקב", vip: "VIP", lost: "אבד", inactive: "לא פעיל" }
+    : { lead: "عميل محتمل", qualified: "مؤهل", active: "نشط", follow_up: "متابعة", vip: "VIP", lost: "مفقود", inactive: "غير نشط" };
   if (freshMap[stage]) return freshMap[stage];
   const he = state.lang === "he";
   const map = he
-    ? { lead: "׳׳™׳“", active: "׳₪׳¢׳™׳", follow_up: "׳׳¢׳§׳‘", vip: "VIP", inactive: "׳׳ ׳₪׳¢׳™׳" }
-    : { lead: "״¹…„ …״­״×…„", active: "†״´״·", follow_up: "…״×״§״¨״¹״©", vip: "VIP", inactive: "״÷״± †״´״·" };
+    ? { lead: "ליד", active: "פעיל", follow_up: "מעקב", vip: "VIP", inactive: "לא פעיל" }
+    : { lead: "عميل محتمل", active: "نشط", follow_up: "متابعة", vip: "VIP", inactive: "غير نشط" };
   return map[stage] || stage || "-";
 }
 
@@ -740,47 +749,47 @@ renderCrm = function () {
   const stageRows = ["lead", "qualified", "active", "vip", "lost"].map((stage) => [stage, state.data.clients.filter((client) => client.stage === stage).length]);
   return html`
     <div class="grid stats">
-      ${statCard("ג—", open.length, he ? "׳׳©׳™׳׳•׳× ׳₪׳×׳•׳—׳•׳×" : "…‡״§… …״×ˆ״­״©", "blue")}
-      ${statCard("!", overdue.length, he ? "׳‘׳׳™׳—׳•׳¨" : "…״×״£״®״±״©", overdue.length ? "red" : "green")}
-      ${statCard("ג—†", state.data.clients.filter((client) => client.stage === "vip").length, "VIP", "gold")}
-      ${statCard("ג“", tasks.filter((task) => task.status === "done").length, he ? "׳”׳•׳©׳׳׳•" : "…ƒ״×…„״©", "green")}
+      ${statCard("◎", open.length, he ? "משימות פתוחות" : "مهام مفتوحة", "blue")}
+      ${statCard("!", overdue.length, he ? "באיחור" : "متأخرة", overdue.length ? "red" : "green")}
+      ${statCard("◆", state.data.clients.filter((client) => client.stage === "vip").length, "VIP", "gold")}
+      ${statCard("✓", tasks.filter((task) => task.status === "done").length, he ? "הושלמו" : "مكتملة", "green")}
     </div>
     <div class="feature-grid">
-      <div class="card"><h3>${he ? "׳׳©׳™׳׳× ׳׳¢׳§׳‘ ׳—׳“׳©׳”" : "…‡…״© …״×״§״¨״¹״© ״¬״¯״¯״©"}</h3>
+      <div class="card"><h3>${he ? "משימת מעקב חדשה" : "مهمة متابعة جديدة"}</h3>
         <form id="crmTaskForm" class="inline-form">
           <select name="clientId" required>${state.data.clients.map((client) => `<option value="${client.id}">${client.fname} ${client.lname}</option>`).join("")}</select>
-          <input name="title" placeholder="${he ? "׳›׳•׳×׳¨׳×" : "״§„״¹†ˆ״§†"}" required>
+          <input name="title" placeholder="${he ? "כותרת" : "العنوان"}" required>
           <input name="dueDate" type="date">
-          <select name="priority"><option value="normal">${he ? "׳¨׳’׳™׳" : "״¹״§״¯"}</option><option value="high">${he ? "׳’׳‘׳•׳”" : "…״±״×״¹"}</option><option value="low">${he ? "׳ ׳׳•׳" : "…†״®״¶"}</option></select>
-          <button class="btn">${he ? "׳©׳׳™׳¨׳”" : "״­״¸"}</button>
+          <select name="priority"><option value="normal">${he ? "רגיל" : "عادي"}</option><option value="high">${he ? "גבוה" : "مرتفع"}</option><option value="low">${he ? "נמוך" : "منخفض"}</option></select>
+          <button class="btn">${he ? "שמירה" : "حفظ"}</button>
         </form>
       </div>
-      <div class="card"><h3>${he ? "׳©׳׳‘׳™ ׳׳§׳•׳—׳•׳×" : "…״±״§״­„ ״§„״¹…„״§״¡"}</h3>
+      <div class="card"><h3>${he ? "שלבי לקוחות" : "مراحل العملاء"}</h3>
         <div class="stack-list">${stageRows.map(([stage, count]) => `<div class="feature-row"><div><strong>${crmStageLabel(stage)}</strong><span>${count}</span></div></div>`).join("")}</div>
       </div>
     </div>
     <div class="feature-grid">
-      <div class="card"><h3>${he ? "׳׳©׳™׳׳•׳× CRM" : "…‡״§… CRM"}</h3>
-        <div class="stack-list">${tasks.map((task) => `<div class="feature-row"><div><strong>${task.title}</strong><span>${task.clientName || "-"} ֲ· ${task.dueDate || "-"}</span><small>${task.notes || priorityLabel(task.priority)}</small></div><div class="actions"><span class="pill ${task.status === "done" ? "done" : task.status === "cancelled" ? "cancelled" : "pending"}">${crmTaskStatusLabel(task.status)}</span>${task.status === "open" ? `<button class="btn secondary" data-crm-task-done="${task.id}">${he ? "׳‘׳•׳¦׳¢" : "״×…"}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "משימות CRM" : "مهام CRM"}</h3>
+        <div class="stack-list">${tasks.map((task) => `<div class="feature-row"><div><strong>${task.title}</strong><span>${task.clientName || "-"} · ${task.dueDate || "-"}</span><small>${task.notes || priorityLabel(task.priority)}</small></div><div class="actions"><span class="pill ${task.status === "done" ? "done" : task.status === "cancelled" ? "cancelled" : "pending"}">${crmTaskStatusLabel(task.status)}</span>${task.status === "open" ? `<button class="btn secondary" data-crm-task-done="${task.id}">${he ? "בוצע" : "تم"}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
-      <div class="card"><h3>${he ? "׳₪׳¢׳™׳׳•׳× ׳׳—׳¨׳•׳ ׳”" : "״¢״®״± †״´״§״·"}</h3>
-        <div class="stack-list">${events.map((event) => `<div class="feature-row"><div><strong>${event.clientName || "-"}</strong><span>${event.type} ֲ· ${event.createdAt || ""}</span><small>${event.description || ""}</small></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "פעילות אחרונה" : "آخر نشاط"}</h3>
+        <div class="stack-list">${events.map((event) => `<div class="feature-row"><div><strong>${event.clientName || "-"}</strong><span>${event.type} · ${event.createdAt || ""}</span><small>${event.description || ""}</small></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
     </div>
   `;
 }
 
 renderCategoriesHe = function () {
-  return simpleTable("categories", [state.lang === "he" ? "׳©׳" : "״§„״§״³…"], state.data.categories, (c) => [c.name]);
+  return simpleTable("categories", [state.lang === "he" ? "שם" : "الاسم"], state.data.categories, (c) => [c.name]);
 }
 
 renderServicesHe = function () {
-  const h = state.lang === "he" ? ["׳©׳", "׳§׳˜׳’׳•׳¨׳™׳”", "׳׳©׳", "׳׳—׳™׳¨", "׳₪׳¢׳™׳"] : ["״§„״§״³…", "״§„‚״³…", "״§„…״¯״©", "״§„״³״¹״±", "״¹״§„"];
-  return simpleTable("services", h, state.data.services, (s) => [s.name, categoryName(s.categoryId), `${s.duration} ${state.lang === "he" ? "׳“׳§׳•׳×" : "״¯‚‚״©"}`, `${currency()}${s.price}`, yesNo(s.active)]);
+  const h = state.lang === "he" ? ["שם", "קטגוריה", "משך", "מחיר", "פעיל"] : ["الاسم", "القسم", "المدة", "السعر", "فعال"];
+  return simpleTable("services", h, state.data.services, (s) => [s.name, categoryName(s.categoryId), `${s.duration} ${state.lang === "he" ? "דקות" : "دقيقة"}`, `${currency()}${s.price}`, yesNo(s.active)]);
 }
 
 function renderUsersHe() {
-  const h = state.lang === "he" ? ["׳©׳ ׳׳©׳×׳׳©", "׳©׳", "׳×׳₪׳§׳™׳“", "׳₪׳¢׳™׳"] : ["״§״³… ״§„…״³״×״®״¯…", "״§„״§״³…", "״§„״¯ˆ״±", "״¹״§„"];
+  const h = state.lang === "he" ? ["שם משתמש", "שם", "תפקיד", "פעיל"] : ["اسم المستخدم", "الاسم", "الدور", "فعال"];
   return simpleTable("users", h, state.data.users, (u) => [u.username, u.name, roleLabel(u.role), yesNo(u.active)]);
 }
 
@@ -794,11 +803,11 @@ renderConsents = function () {
   const signatures = state.data.consentSignatures || [];
   return html`
     <div class="feature-grid">
-      <div class="card"><h3>${he ? "׳˜׳₪׳¡׳™ PDF ׳׳₪׳™ ׳§׳˜׳’׳•׳¨׳™׳”" : "…„״§״× PDF ״­״³״¨ ״§„‚״³…"}</h3>
-        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${t.id}">${he ? "׳—׳×׳™׳׳”" : "״×ˆ‚״¹"}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${tr("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "טפסי PDF לפי קטגוריה" : "ملفات PDF حسب القسم"}</h3>
+        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${t.id}">${he ? "חתימה" : "توقيع"}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${tr("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
-      <div class="card"><h3>${he ? "׳—׳×׳™׳׳•׳× ׳׳—׳¨׳•׳ ׳•׳×" : "״¢״®״± ״§„״×ˆ״§‚״¹"}</h3>
-        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${s.clientName || s.signerName}</strong><span>${s.templateTitle} ֲ· ${s.signedAt || ""}</span></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "חתימות אחרונות" : "آخر التواقيع"}</h3>
+        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${s.clientName || s.signerName}</strong><span>${s.templateTitle} · ${s.signedAt || ""}</span></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
     </div>
   `;
@@ -810,11 +819,11 @@ renderFeedback = function () {
   const logs = state.data.messageLogs || [];
   return html`
     <div class="feature-grid">
-      <div class="card"><h3>${he ? "׳‘׳§׳©׳•׳× ׳׳©׳•׳‘" : "״·„״¨״§״× ״§„״×‚…"}</h3>
-        <div class="stack-list">${rows.map((r) => `<div class="feature-row"><div><strong>${r.clientName || "-"}</strong><span>${r.serviceName || ""} ֲ· ${r.date || ""} ${r.time || ""}</span>${r.comment ? `<small>${r.comment}</small>` : ""}</div><div><span class="pill ${r.status === "submitted" ? "done" : "pending"}">${r.status === "submitted" ? (he ? "׳”׳×׳§׳‘׳" : "״×…") : (he ? "׳ ׳©׳׳—" : "״£״±״³„")}</span> ${r.rating ? `<strong>${r.rating}/5</strong>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "בקשות משוב" : "طلبات التقييم"}</h3>
+        <div class="stack-list">${rows.map((r) => `<div class="feature-row"><div><strong>${r.clientName || "-"}</strong><span>${r.serviceName || ""} · ${r.date || ""} ${r.time || ""}</span>${r.comment ? `<small>${r.comment}</small>` : ""}</div><div><span class="pill ${r.status === "submitted" ? "done" : "pending"}">${r.status === "submitted" ? (he ? "התקבל" : "تم") : (he ? "נשלח" : "أرسل")}</span> ${r.rating ? `<strong>${r.rating}/5</strong>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
-      <div class="card"><h3>${he ? "׳™׳•׳׳ WhatsApp" : "״³״¬„ WhatsApp"}</h3>
-        <div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${log.recipient}</strong><span>${log.entity} #${log.entityId || "-"} ֲ· ${log.createdAt || ""}</span><small>${log.error || log.message}</small></div><span class="pill ${log.status === "sent" || log.status === "dry_run" ? "done" : log.status === "failed" ? "cancelled" : "pending"}">${log.status}</span></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+      <div class="card"><h3>${he ? "יומן WhatsApp" : "سجل WhatsApp"}</h3>
+        <div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${log.recipient}</strong><span>${log.entity} #${log.entityId || "-"} · ${log.createdAt || ""}</span><small>${log.error || log.message}</small></div><span class="pill ${log.status === "sent" || log.status === "dry_run" ? "done" : log.status === "failed" ? "cancelled" : "pending"}">${log.status}</span></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
     </div>
   `;
@@ -825,12 +834,12 @@ renderGifts = function () {
   const rows = state.data.giftCards || [];
   return html`
     <div class="gift-board">${rows.map((g) => `<div class="gift-card">
-      <div class="gift-ribbon">${he ? "׳׳×׳ ׳”" : "‡״¯״©"}</div>
-      <h3>${g.serviceName || (he ? "׳©׳™׳¨׳•׳× ׳‘׳§׳׳™׳ ׳™׳§׳”" : "״¬„״³״©  ״§„״¹״§״¯״©")}</h3>
+      <div class="gift-ribbon">${he ? "מתנה" : "هدية"}</div>
+      <h3>${g.serviceName || (he ? "שירות בקליניקה" : "جلسة في العيادة")}</h3>
       <p>${g.toClientName || ""}</p>
-      <strong>${g.sessions} ${he ? "׳׳₪׳’׳©׳™׳" : "״¬„״³״©"}</strong>
+      <strong>${g.sessions} ${he ? "מפגשים" : "جلسة"}</strong>
       <code>${g.code}</code>
-      <div class="actions"><button class="btn secondary" data-gift-whatsapp="${g.id}">WhatsApp</button><button class="btn secondary" data-gift-print="${g.id}">${he ? "׳”׳“׳₪׳¡׳”" : "״·״¨״§״¹״©"}</button></div>
+      <div class="actions"><button class="btn secondary" data-gift-whatsapp="${g.id}">WhatsApp</button><button class="btn secondary" data-gift-print="${g.id}">${he ? "הדפסה" : "طباعة"}</button></div>
     </div>`).join("") || `<div class="card"><p class="muted">${tr("noData")}</p></div>`}</div>
   `;
 }
@@ -900,13 +909,16 @@ function platformCreateTenantCard(he) {
 }
 
 function platformTenantBillingPanel(tenant, he) {
-  const invoices = tenant.recentInvoices || [];
+  const invoices = (tenant.recentInvoices || []).map((invoice) => Object.fromEntries(
+    Object.entries(invoice).map(([key, value]) => [key, escapeHtml(value)]),
+  ));
+  const tenantId = escapeAttr(tenant.id);
   const plan = tenant.subscriptionPlan || tenant.plan || "starter";
   const defaultAmount = plan === "scale" ? 199 : plan === "growth" ? 99 : 49;
   return html`
     <div class="platform-billing-panel">
       <h4>${he ? "יצירת חיוב" : "إنشاء فاتورة"}</h4>
-      <form class="inline-form" data-platform-invoice-form="${tenant.id}">
+      <form class="inline-form" data-platform-invoice-form="${tenantId}">
         <input name="amount" type="number" min="0" step="0.01" value="${defaultAmount}" required>
         <select name="currency">
           ${["USD", "ILS", "EUR"].map((currency) => `<option value="${currency}">${currency}</option>`).join("")}
@@ -996,7 +1008,7 @@ function renderPlatformInvoiceTable(invoices, he) {
   return cleanTable(heads, invoices, (invoice) => [
     invoice.number || "-",
     invoice.tenantName || "-",
-    `<span class="pill ${invoiceStatusClass(invoice.status)}">${invoiceStatusLabel(invoice.status)}</span>`,
+    rawHtml(`<span class="pill ${invoiceStatusClass(invoice.status)}">${escapeHtml(invoiceStatusLabel(invoice.status))}</span>`),
     moneyLabel(invoice.amount, invoice.currency),
     `${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}`,
     invoice.dueAt || "-",
@@ -1025,8 +1037,9 @@ function exportPlatformBillingCsv() {
 }
 
 function printPlatformInvoice(invoiceId) {
-  const invoice = allPlatformInvoices().find((item) => Number(item.id) === Number(invoiceId));
-  if (!invoice) return;
+  const rawInvoice = allPlatformInvoices().find((item) => Number(item.id) === Number(invoiceId));
+  if (!rawInvoice) return;
+  const invoice = Object.fromEntries(Object.entries(rawInvoice).map(([key, value]) => [key, escapeHtml(value)]));
   const he = state.lang === "he";
   const win = window.open("", "_blank", "width=760,height=840");
   win.document.write(`<!doctype html><html lang="${state.lang}" dir="rtl"><head><meta charset="utf-8"><title>${invoice.number}</title><style>body{font-family:Arial,sans-serif;padding:34px;color:#102220}.invoice{max-width:620px;margin:auto;border:1px solid #d8e6e1;border-radius:12px;padding:28px}.row{display:flex;justify-content:space-between;border-bottom:1px solid #eef3f1;padding:11px 0}.total{font-size:20px;font-weight:700}h1{margin:0 0 8px}</style></head><body><div class="invoice"><h1>Clinova</h1><h2>${he ? "חשבונית מערכת" : "فاتورة النظام"}</h2><div class="row"><span>${he ? "מספר" : "الرقم"}</span><strong>${invoice.number}</strong></div><div class="row"><span>${he ? "קליניקה" : "العيادة"}</span><strong>${invoice.tenantName}</strong></div><div class="row"><span>${he ? "סטטוס" : "الحالة"}</span><strong>${invoiceStatusLabel(invoice.status)}</strong></div><div class="row"><span>${he ? "תקופה" : "الفترة"}</span><strong>${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}</strong></div><div class="row"><span>${he ? "לתשלום עד" : "تاريخ الاستحقاق"}</span><strong>${invoice.dueAt || "-"}</strong></div><div class="row total"><span>${he ? "סכום" : "المبلغ"}</span><strong>${moneyLabel(invoice.amount, invoice.currency)}</strong></div><p>${invoice.notes || ""}</p></div><script>print();</script></body></html>`);
@@ -1059,41 +1072,41 @@ function invoiceStatusLabel(status) {
 function crmTaskStatusLabel(status) {
   const he = state.lang === "he";
   const map = he
-    ? { open: "׳₪׳×׳•׳—׳”", done: "׳‘׳•׳¦׳¢׳”", cancelled: "׳‘׳•׳˜׳׳”" }
-    : { open: "…״×ˆ״­״©", done: "…ƒ״×…„״©", cancelled: "…„״÷״§״©" };
+    ? { open: "פתוחה", done: "בוצעה", cancelled: "בוטלה" }
+    : { open: "مفتوحة", done: "مكتملة", cancelled: "ملغاة" };
   return map[status] || status || "-";
 }
 
 function priorityLabel(priority) {
   const he = state.lang === "he";
   const map = he
-    ? { low: "׳ ׳׳•׳›׳”", normal: "׳¨׳’׳™׳׳”", high: "׳’׳‘׳•׳”׳”" }
-    : { low: "…†״®״¶״©", normal: "״¹״§״¯״©", high: "…״±״×״¹״©" };
+    ? { low: "נמוכה", normal: "רגילה", high: "גבוהה" }
+    : { low: "منخفضة", normal: "عادية", high: "مرتفعة" };
   return map[priority] || priority || "-";
 }
 
 function messageStatusLabel(status) {
   const he = state.lang === "he";
   const map = he
-    ? { sent: "׳ ׳©׳׳—׳”", fallback: "׳§׳™׳©׳•׳¨", failed: "׳ ׳›׳©׳׳”", dry_run: "׳‘׳“׳™׳§׳”" }
-    : { sent: "…״±״³„״©", fallback: "״±״§״¨״·", failed: "״´„״×", dry_run: "״×״¬״±״¨״©" };
+    ? { sent: "נשלחה", fallback: "קישור", failed: "נכשלה", dry_run: "בדיקה" }
+    : { sent: "مرسلة", fallback: "رابط", failed: "فشلت", dry_run: "تجربة" };
   return map[status] || status || "-";
 }
 
 function domainStatusLabel(status) {
   const he = state.lang === "he";
   const map = he
-    ? { pending: "׳‘׳”׳׳×׳ ׳”", active: "׳₪׳¢׳™׳", failed: "׳ ׳›׳©׳", disabled: "׳›׳‘׳•׳™" }
-    : { pending: "‚״¯ ״§„״§†״×״¸״§״±", active: "†״´״·", failed: "״´„", disabled: "…״¹״·„" };
+    ? { pending: "בהמתנה", active: "פעיל", failed: "נכשל", disabled: "כבוי" }
+    : { pending: "قيد الانتظار", active: "نشط", failed: "فشل", disabled: "معطل" };
   return map[status] || status || "-";
 }
 
 function restoreCard() {
   const he = state.lang === "he";
-  return html`<div class="card"><h3>${he ? "׳©׳—׳–׳•׳¨ ׳’׳™׳‘׳•׳™" : "״§״³״×״±״¬״§״¹ †״³״®״© ״§״­״×״§״·״©"}</h3>
-    <p class="muted">${he ? "׳׳₪׳ ׳™ ׳”׳©׳—׳–׳•׳¨ ׳”׳׳¢׳¨׳›׳× ׳™׳•׳¦׳¨׳× ׳’׳™׳‘׳•׳™ ׳‘׳˜׳™׳—׳•׳×׳™." : "‚״¨„ ״§„״§״³״×״±״¬״§״¹ †״´״¦ ״§„†״¸״§… †״³״®״© ״£…״§† ״×„‚״§״¦״§."}</p>
-    <form id="restoreForm" class="inline-form upload-form"><input name="backup" type="file" accept=".sqlite,.db,.dump" required><button class="btn danger">${he ? "׳©׳—׳–׳•׳¨" : "״§״³״×״±״¬״§״¹"}</button></form>
-    <div class="muted upload-hint">${he ? "׳׳•׳׳׳¥ ׳׳‘׳¦׳¢ ׳‘׳©׳¢׳” ׳©׳׳™׳ ׳׳©׳×׳׳©׳™׳ ׳‘׳׳¢׳¨׳›׳×." : "״¶„ ״§„״×†״°  ˆ‚״× „״§ ˆ״¬״¯ ‡ …״³״×״®״¯…ˆ† ״¯״§״®„ ״§„†״¸״§…."}</div>
+  return html`<div class="card"><h3>${he ? "שחזור גיבוי" : "استرجاع نسخة احتياطية"}</h3>
+    <p class="muted">${he ? "לפני השחזור המערכת יוצרת גיבוי בטיחותי." : "قبل الاسترجاع ينشئ النظام نسخة أمان تلقائيا."}</p>
+    <form id="restoreForm" class="inline-form upload-form"><input name="backup" type="file" accept=".sqlite,.db,.dump" required><button class="btn danger">${he ? "שחזור" : "استرجاع"}</button></form>
+    <div class="muted upload-hint">${he ? "מומלץ לבצע בשעה שאין משתמשים במערכת." : "يفضل التنفيذ في وقت لا يوجد فيه مستخدمون داخل النظام."}</div>
   </div>`;
 }
 
@@ -1106,28 +1119,28 @@ function billingCardLocalized() {
   const limits = billing.limits || {};
   const invoices = billing.invoices || [];
   const plans = Object.entries(catalog);
-  const maxUsers = limits.maxUsers ?? "גˆ";
-  const maxClients = limits.maxClients ?? "גˆ";
+  const maxUsers = limits.maxUsers ?? "∞";
+  const maxClients = limits.maxClients ?? "∞";
   return html`<div class="card">
-    <h3>${he ? "׳׳ ׳•׳™ ׳•׳×׳•׳›׳ ׳™׳×" : "״§„״§״´״×״±״§ƒ ˆ״§„״®״·״©"}</h3>
+    <h3>${he ? "מנוי ותוכנית" : "الاشتراك والخطة"}</h3>
     <div class="grid stats">
-      ${statCard("ג‚×", catalog[plan]?.monthlyPrice ? `${catalog[plan].monthlyPrice}/mo` : "-", he ? "׳׳—׳™׳¨ ׳—׳•׳“׳©׳™" : "״§„״³״¹״± ״§„״´‡״±", "gold")}
-      ${statCard("נ‘¥", `${usage.users || 0}/${maxUsers}`, he ? "׳׳©׳×׳׳©׳™׳" : "״§„…״³״×״®״¯…ˆ†", "blue")}
-      ${statCard("ג—", `${usage.clients || 0}/${maxClients}`, he ? "׳׳§׳•׳—׳•׳×" : "״§„״¹…„״§״¡", "green")}
-      ${statCard("ג“", billing.status || "trial", he ? "׳¡׳˜׳˜׳•׳¡" : "״§„״­״§„״©", "purple")}
+      ${statCard("₪", catalog[plan]?.monthlyPrice ? `${catalog[plan].monthlyPrice}/mo` : "-", he ? "מחיר חודשי" : "السعر الشهري", "gold")}
+      ${statCard("👥", `${usage.users || 0}/${maxUsers}`, he ? "משתמשים" : "المستخدمون", "blue")}
+      ${statCard("◎", `${usage.clients || 0}/${maxClients}`, he ? "לקוחות" : "العملاء", "green")}
+      ${statCard("✓", billing.status || "trial", he ? "סטטוס" : "الحالة", "purple")}
     </div>
     <form id="billingForm" class="inline-form">
       <select name="plan" required>
-        ${plans.map(([id, item]) => `<option value="${id}" ${id === plan ? "selected" : ""}>${item.name} - ג‚×${item.monthlyPrice}/mo</option>`).join("")}
+        ${plans.map(([id, item]) => `<option value="${id}" ${id === plan ? "selected" : ""}>${item.name} - ₪${item.monthlyPrice}/mo</option>`).join("")}
       </select>
       <select name="status" required>
         ${["trial", "active", "past_due", "suspended", "cancelled"].map((status) => `<option value="${status}" ${status === billing.status ? "selected" : ""}>${status}</option>`).join("")}
       </select>
       <input name="currentPeriodEnd" type="datetime-local" value="">
       <input type="hidden" name="billingPanelMarker" value="1">
-      <button class="btn">${he ? "׳¢׳“׳›׳•׳ ׳׳ ׳•׳™" : "״×״­״¯״« ״§„״§״´״×״±״§ƒ"}</button>
+      <button class="btn">${he ? "עדכון מנוי" : "تحديث الاشتراك"}</button>
     </form>
-    <p class="muted">${he ? "׳¢׳“׳›׳•׳ ׳™׳“׳ ׳™ ׳–׳׳ ׳™ ׳¢׳“ ׳—׳™׳‘׳•׳¨ ׳¡׳₪׳§ ׳×׳©׳׳•׳׳™׳." : "״×״­״¯״« ״¯ˆ …״₪‚״× ״¥„‰ ״£† ״×… ״±״¨״· ״¨ˆ״§״¨״© ״§„״¯״¹."}</p>
+    <p class="muted">${he ? "עדכון ידני זמני עד חיבור ספק תשלומים." : "تحديث يدوي مؤقت إلى أن يتم ربط بوابة الدفع."}</p>
   </div>`;
 }
 
@@ -1144,14 +1157,14 @@ function billingInvoicesPanelLocalized() {
         ${["USD", "ILS", "EUR"].map((currency) => `<option value="${currency}">${currency}</option>`).join("")}
       </select>
       <input name="periodStart" type="date" value="${new Date().toISOString().slice(0, 10)}">
-      <input name="notes" placeholder="${he ? "Invoice notes" : "…„״§״­״¸״§״× ״§„״§״×ˆ״±״©"}">
-      <button class="btn secondary">${he ? "Create invoice" : "״¥״µ״¯״§״± ״§״×ˆ״±״©"}</button>
+      <input name="notes" placeholder="${he ? "Invoice notes" : "ملاحظات الفاتورة"}">
+      <button class="btn secondary">${he ? "Create invoice" : "إصدار فاتورة"}</button>
     </form>
     <div class="stack-list">
       ${invoices.map((invoice) => `<div class="feature-row">
-        <div><strong>${invoice.number}</strong><span>${invoice.currency} ${Number(invoice.amount || 0).toLocaleString()} ֲ· ${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}</span><small>${invoice.notes || invoice.dueAt || ""}</small></div>
-        <div class="actions"><span class="pill ${invoice.status === "paid" ? "done" : invoice.status === "void" ? "cancelled" : "pending"}">${invoice.status}</span>${invoice.status === "open" ? `<button class="btn secondary" data-invoice-paid="${invoice.id}">${he ? "Paid" : "…״¯ˆ״¹״©"}</button><button class="btn danger" data-invoice-void="${invoice.id}">${he ? "Void" : "״¥„״÷״§״¡"}</button>` : ""}</div>
-      </div>`).join("") || `<p class="muted">${he ? "No invoices yet" : "„״§ ״×ˆ״¬״¯ ˆ״§״×״± ״¨״¹״¯"}</p>`}
+        <div><strong>${invoice.number}</strong><span>${invoice.currency} ${Number(invoice.amount || 0).toLocaleString()} · ${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}</span><small>${invoice.notes || invoice.dueAt || ""}</small></div>
+        <div class="actions"><span class="pill ${invoice.status === "paid" ? "done" : invoice.status === "void" ? "cancelled" : "pending"}">${invoice.status}</span>${invoice.status === "open" ? `<button class="btn secondary" data-invoice-paid="${invoice.id}">${he ? "Paid" : "مدفوعة"}</button><button class="btn danger" data-invoice-void="${invoice.id}">${he ? "Void" : "إلغاء"}</button>` : ""}</div>
+      </div>`).join("") || `<p class="muted">${he ? "No invoices yet" : "لا توجد فواتير بعد"}</p>`}
     </div>
   `;
 }
@@ -1162,7 +1175,7 @@ function renderBillingLocalized() {
     <div class="settings-grid">
       ${billingCardLocalized()}
       <div class="card">
-        <h3>${state.lang === "he" ? "Invoices" : "״§„ˆ״§״×״±"}</h3>
+        <h3>${state.lang === "he" ? "Invoices" : "الفواتير"}</h3>
         ${billingInvoicesPanelLocalized()}
       </div>
     </div>
@@ -1179,22 +1192,22 @@ function renderWhatsAppLocalized() {
       <div class="card">
         <h3>${he ? "WhatsApp" : "WhatsApp"}</h3>
         <form id="clinicSettingsForm">
-          ${field("whatsappTemplate", he ? "Appointment template" : "״±״³״§„״© ״×״°ƒ״± ״§„…ˆ״¹״¯", s.whatsappTemplate || "", "textarea", false, "full")}
-          ${select("whatsappEnabled", he ? "WhatsApp enabled" : "״×״¹„ WhatsApp", [["false", he ? "Link only" : "״±״§״¨״· ‚״·"], ["true", he ? "API enabled" : "…״¹„ ״¹״¨״± API"]], s.whatsappEnabled || "false")}
-          ${select("whatsappMode", he ? "Sending mode" : "ˆ״¶״¹ ״§„״¥״±״³״§„", [["fallback", he ? "WhatsApp link" : "״±״§״¨״· WhatsApp"], ["cloud", "Meta Cloud API"]], s.whatsappMode || "fallback")}
-          ${field("whatsappBusinessPhone", he ? "Business phone" : "״±‚… WhatsApp Business", s.whatsappBusinessPhone || "", "text", false)}
-          ${field("whatsappFeedbackTemplate", he ? "Feedback template" : "‚״§„״¨ ״§„״×‚…", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
-          ${field("whatsappGiftTemplate", he ? "Gift template" : "‚״§„״¨ ״§„‡״¯״©", s.whatsappGiftTemplate || "", "textarea", false, "full")}
+          ${field("whatsappTemplate", he ? "Appointment template" : "رسالة تذكير الموعد", s.whatsappTemplate || "", "textarea", false, "full")}
+          ${select("whatsappEnabled", he ? "WhatsApp enabled" : "تفعيل WhatsApp", [["false", he ? "Link only" : "رابط فقط"], ["true", he ? "API enabled" : "مفعل عبر API"]], s.whatsappEnabled || "false")}
+          ${select("whatsappMode", he ? "Sending mode" : "وضع الإرسال", [["fallback", he ? "WhatsApp link" : "رابط WhatsApp"], ["cloud", "Meta Cloud API"]], s.whatsappMode || "fallback")}
+          ${field("whatsappBusinessPhone", he ? "Business phone" : "رقم WhatsApp Business", s.whatsappBusinessPhone || "", "text", false)}
+          ${field("whatsappFeedbackTemplate", he ? "Feedback template" : "قالب التقييم", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
+          ${field("whatsappGiftTemplate", he ? "Gift template" : "قالب الهدية", s.whatsappGiftTemplate || "", "textarea", false, "full")}
           <button class="btn">${tr("save")}</button>
         </form>
       </div>
       <div class="card">
-        <h3>${he ? "Message log" : "״³״¬„ ״±״³״§״¦„ WhatsApp"}</h3>
+        <h3>${he ? "Message log" : "سجل رسائل WhatsApp"}</h3>
         <div class="stack-list">
           ${logs.map((log) => `<div class="feature-row">
-            <div><strong>${log.recipient || "-"}</strong><span>${log.entity || ""} #${log.entityId || ""} ֲ· ${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>
+            <div><strong>${log.recipient || "-"}</strong><span>${log.entity || ""} #${log.entityId || ""} · ${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>
             <span class="pill ${log.status === "sent" || log.status === "dry_run" ? "done" : log.status === "failed" ? "cancelled" : "pending"}">${log.status}</span>
-          </div>`).join("") || `<p class="muted">${he ? "No messages yet" : "„״§ ״×ˆ״¬״¯ ״±״³״§״¦„ ״¨״¹״¯"}</p>`}
+          </div>`).join("") || `<p class="muted">${he ? "No messages yet" : "لا توجد رسائل بعد"}</p>`}
         </div>
       </div>
     </div>
@@ -1208,18 +1221,18 @@ renderSettingsClean = function (message = "") {
   return html`
     <div class="settings-grid">
       ${tenantCardHtml}
-      ${state.user.role === "admin" ? `<div class="card"><h3>${he ? "Clinic settings" : "״¥״¹״¯״§״¯״§״× ״§„״¹״§״¯״©"}</h3><form id="clinicSettingsForm">
-        ${field("clinicName", he ? "Clinic name" : "״§״³… ״§„״¹״§״¯״©", s.clinicName || "Clinova")}
-        <div class="field"><label>${he ? "System logo" : "„ˆ״÷ˆ ״§„†״¸״§…"}</label><div class="logo-upload"><img id="logoPreview" src="${logoSrc()}" alt="Clinova"><input name="logoFile" id="logoFile" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"><input name="logoUrl" id="logoUrlInput" type="hidden" value="${escapeAttr(s.logoUrl || "/logo.svg")}"></div></div>
-        ${field("currency", he ? "Currency" : "״§„״¹…„״©", s.currency || "ג‚×")}
-        ${field("workStart", he ? "Workday starts" : "״¨״¯״§״© ״§„״¯ˆ״§…", s.workStart || "09:00", "time")}
-        ${field("workEnd", he ? "Workday ends" : "†‡״§״© ״§„״¯ˆ״§…", s.workEnd || "18:00", "time")}
-        <div class="field full"><label>${he ? "Work days" : "״£״§… ״§„״¹…„"}</label>${workDaysPicker(s.workDays)}</div>
+      ${state.user.role === "admin" ? `<div class="card"><h3>${he ? "Clinic settings" : "إعدادات العيادة"}</h3><form id="clinicSettingsForm">
+        ${field("clinicName", he ? "Clinic name" : "اسم العيادة", s.clinicName || "Clinova")}
+        <div class="field"><label>${he ? "System logo" : "لوغو النظام"}</label><div class="logo-upload"><img id="logoPreview" src="${logoSrc()}" alt="Clinova"><input name="logoFile" id="logoFile" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"><input name="logoUrl" id="logoUrlInput" type="hidden" value="${escapeAttr(s.logoUrl || "/logo.svg")}"></div></div>
+        ${field("currency", he ? "Currency" : "العملة", s.currency || "₪")}
+        ${field("workStart", he ? "Workday starts" : "بداية الدوام", s.workStart || "09:00", "time")}
+        ${field("workEnd", he ? "Workday ends" : "نهاية الدوام", s.workEnd || "18:00", "time")}
+        <div class="field full"><label>${he ? "Work days" : "أيام العمل"}</label>${workDaysPicker(s.workDays)}</div>
         <button class="btn">${tr("save")}</button>
       </form>
-      <div class="backup-panel"><h3>${he ? "System backup" : "†״³״®״© ״®״§״±״¬״© …† ״§„†״¸״§…"}</h3><p class="muted">${he ? "Download a database backup to this computer." : "״×״­…„ †״³״®״© ‚״§״¹״¯״© ״§„״¨״§†״§״× ״¹„‰ ״¬‡״§״² ״§„ƒ…״¨ˆ״×״±."}</p><a class="btn secondary" href="/api/system/export" download>${he ? "Download backup" : "״×״­…„ ״§„†״³״®״©"}</a></div></div>` : ""}
+      <div class="backup-panel"><h3>${he ? "System backup" : "نسخة خارجية من النظام"}</h3><p class="muted">${he ? "Download a database backup to this computer." : "تحميل نسخة قاعدة البيانات على جهاز الكمبيوتر."}</p><a class="btn secondary" href="/api/system/export" download>${he ? "Download backup" : "تحميل النسخة"}</a></div></div>` : ""}
       ${state.user.role === "admin" ? restoreCard() : ""}
-      <div class="card"><h3>${he ? "Change password" : "״×״÷״± ƒ„…״© ״§„…״±ˆ״±"}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="passwordForm"><div class="field"><label>${he ? "Current password" : "ƒ„…״© ״§„…״±ˆ״± ״§„״­״§„״©"}</label><input name="currentPassword" type="password" required></div><div class="field"><label>${he ? "New password" : "ƒ„…״© ״§„…״±ˆ״± ״§„״¬״¯״¯״©"}</label><input name="newPassword" type="password" minlength="8" required></div><button class="btn">${he ? "Change password" : "״×״÷״± ƒ„…״© ״§„…״±ˆ״±"}</button></form></div>
+      <div class="card"><h3>${he ? "Change password" : "تغيير كلمة المرور"}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="passwordForm"><div class="field"><label>${he ? "Current password" : "كلمة المرور الحالية"}</label><input name="currentPassword" type="password" required></div><div class="field"><label>${he ? "New password" : "كلمة المرور الجديدة"}</label><input name="newPassword" type="password" minlength="8" required></div><button class="btn">${he ? "Change password" : "تغيير كلمة المرور"}</button></form></div>
     </div>
   `;
 }
@@ -1232,31 +1245,31 @@ function tenantProfileCard() {
   const plan = planNameLabel(state.data.billing?.plan || tenant.plan || "starter");
   return html`
     <div class="card">
-      <h3>${he ? "׳₪׳¨׳˜׳™ ׳”׳¢׳¡׳§" : "״¨״§†״§״× ״§„״¹״§״¯״© ״§„״×״¬״§״±״©"}</h3>
+      <h3>${he ? "פרטי העסק" : "بيانات العيادة التجارية"}</h3>
       <form id="tenantProfileForm">
-        ${field("name", he ? "׳©׳ ׳¨׳©׳׳™" : "״§„״§״³… ״§„״±״³…", tenant.name || "Clinova Clinic")}
-        ${field("billingEmail", he ? "׳׳™׳׳™׳™׳ ׳׳—׳™׳•׳‘" : "״¨״±״¯ ״§„ˆ״×״±״©", tenant.billingEmail || "", "email", false)}
-        <div class="field"><label>${he ? "׳׳–׳”׳” ׳׳¨׳—׳‘" : "…״¹״±‘ ״§„״¹״§״¯״©"}</label><input value="${escapeAttr(tenant.slug || "demo")}" disabled></div>
+        ${field("name", he ? "שם רשמי" : "الاسم الرسمي", tenant.name || "Clinova Clinic")}
+        ${field("billingEmail", he ? "אימייל לחיוב" : "بريد الفوترة", tenant.billingEmail || "", "email", false)}
+        <div class="field"><label>${he ? "מזהה מרחב" : "معرّف العيادة"}</label><input value="${escapeAttr(tenant.slug || "demo")}" disabled></div>
         <div class="grid stats">
-          ${statCard("ג“", status, he ? "׳¡׳˜׳˜׳•׳¡" : "״§„״­״§„״©", "purple")}
-          ${statCard("ג–£", plan, he ? "׳×׳•׳›׳ ׳™׳×" : "״§„״®״·״©", "blue")}
+          ${statCard("✓", status, he ? "סטטוס" : "الحالة", "purple")}
+          ${statCard("▣", plan, he ? "תוכנית" : "الخطة", "blue")}
         </div>
         <button class="btn">${tr("save")}</button>
       </form>
       <form id="tenantDomainForm" class="inline-form">
-        <input name="domain" placeholder="${he ? "׳“׳•׳׳™׳™׳ ׳׳“׳•׳’׳׳” clinic.com" : "״¯ˆ…† …״«„ clinic.com"}" required>
-        <label class="check-inline"><input name="isPrimary" type="checkbox"> <span>${he ? "׳¨׳׳©׳™" : "״£״³״§״³"}</span></label>
-        <button class="btn secondary">${he ? "׳”׳•׳¡׳₪׳× ׳“׳•׳׳™׳™׳" : "״¥״¶״§״© ״¯ˆ…†"}</button>
+        <input name="domain" placeholder="${he ? "דומיין לדוגמה clinic.com" : "دومين مثل clinic.com"}" required>
+        <label class="check-inline"><input name="isPrimary" type="checkbox"> <span>${he ? "ראשי" : "أساسي"}</span></label>
+        <button class="btn secondary">${he ? "הוספת דומיין" : "إضافة دومين"}</button>
       </form>
       <div class="stack-list">
         ${domains.map((item) => `<div class="feature-row">
-          <div><strong>${item.domain}</strong><span>${domainStatusLabel(item.status)}${item.isPrimary ? ` ֲ· ${he ? "׳¨׳׳©׳™" : "״£״³״§״³"}` : ""}</span><small>${item.verifiedAt || item.createdAt || ""}</small></div>
+          <div><strong>${item.domain}</strong><span>${domainStatusLabel(item.status)}${item.isPrimary ? ` · ${he ? "ראשי" : "أساسي"}` : ""}</span><small>${item.verifiedAt || item.createdAt || ""}</small></div>
           <div class="actions">
-            ${item.status !== "active" ? `<button class="btn secondary" data-domain-status="active" data-id="${item.id}">${he ? "׳¡׳™׳׳•׳ ׳›׳₪׳¢׳™׳" : "״×״¹„"}</button>` : ""}
-            ${!item.isPrimary ? `<button class="btn secondary" data-domain-primary="${item.id}">${he ? "׳¨׳׳©׳™" : "״£״³״§״³"}</button>` : ""}
+            ${item.status !== "active" ? `<button class="btn secondary" data-domain-status="active" data-id="${item.id}">${he ? "סימון כפעיל" : "تفعيل"}</button>` : ""}
+            ${!item.isPrimary ? `<button class="btn secondary" data-domain-primary="${item.id}">${he ? "ראשי" : "أساسي"}</button>` : ""}
             <button class="btn danger" data-domain-delete="${item.id}">${tr("delete")}</button>
           </div>
-        </div>`).join("") || `<p class="muted">${he ? "׳׳™׳ ׳“׳•׳׳™׳™׳ ׳™׳ ׳¢׳“׳™׳™׳" : "„״§ ״×ˆ״¬״¯ ״¯ˆ…†״§״× ״¨״¹״¯"}</p>`}
+        </div>`).join("") || `<p class="muted">${he ? "אין דומיינים עדיין" : "لا توجد دومينات بعد"}</p>`}
       </div>
     </div>
   `;
@@ -1270,28 +1283,28 @@ function billingCard() {
   const usage = billing.usage || {};
   const limits = billing.limits || {};
   const plans = Object.entries(catalog);
-  const maxUsers = limits.maxUsers ?? "גˆ";
-  const maxClients = limits.maxClients ?? "גˆ";
+  const maxUsers = limits.maxUsers ?? "∞";
+  const maxClients = limits.maxClients ?? "∞";
   return html`<div class="card">
-    <h3>${he ? "׳׳ ׳•׳™ ׳•׳×׳•׳›׳ ׳™׳×" : "״§„״§״´״×״±״§ƒ ˆ״§„״®״·״©"}</h3>
+    <h3>${he ? "מנוי ותוכנית" : "الاشتراك والخطة"}</h3>
     <div class="grid stats">
-      ${statCard("ג‚×", catalog[plan]?.monthlyPrice ? `${catalog[plan].monthlyPrice}/${he ? "׳—׳•׳“׳©" : "״´‡״±"}` : "-", he ? "׳׳—׳™׳¨ ׳—׳•׳“׳©׳™" : "״§„״³״¹״± ״§„״´‡״±", "gold")}
-      ${statCard("נ‘¥", `${usage.users || 0}/${maxUsers}`, he ? "׳׳©׳×׳׳©׳™׳" : "״§„…״³״×״®״¯…ˆ†", "blue")}
-      ${statCard("ג–£", `${usage.clients || 0}/${maxClients}`, he ? "׳׳§׳•׳—׳•׳×" : "״§„״¹…„״§״¡", "green")}
-      ${statCard("ג“", subscriptionStatusLabel(billing.status || "trial"), he ? "׳¡׳˜׳˜׳•׳¡" : "״§„״­״§„״©", "purple")}
+      ${statCard("₪", catalog[plan]?.monthlyPrice ? `${catalog[plan].monthlyPrice}/${he ? "חודש" : "شهر"}` : "-", he ? "מחיר חודשי" : "السعر الشهري", "gold")}
+      ${statCard("👥", `${usage.users || 0}/${maxUsers}`, he ? "משתמשים" : "المستخدمون", "blue")}
+      ${statCard("▣", `${usage.clients || 0}/${maxClients}`, he ? "לקוחות" : "العملاء", "green")}
+      ${statCard("✓", subscriptionStatusLabel(billing.status || "trial"), he ? "סטטוס" : "الحالة", "purple")}
     </div>
     <form id="billingForm" class="inline-form">
       <select name="plan" required>
-        ${plans.map(([id, item]) => `<option value="${id}" ${id === plan ? "selected" : ""}>${planNameLabel(id)} - ${item.monthlyPrice}/${he ? "׳—׳•׳“׳©" : "״´‡״±"}</option>`).join("")}
+        ${plans.map(([id, item]) => `<option value="${id}" ${id === plan ? "selected" : ""}>${planNameLabel(id)} - ${item.monthlyPrice}/${he ? "חודש" : "شهر"}</option>`).join("")}
       </select>
       <select name="status" required>
         ${["trial", "active", "past_due", "suspended", "cancelled"].map((status) => `<option value="${status}" ${status === billing.status ? "selected" : ""}>${subscriptionStatusLabel(status)}</option>`).join("")}
       </select>
       <input name="currentPeriodEnd" type="datetime-local" value="">
       <input type="hidden" name="billingPanelMarker" value="1">
-      <button class="btn">${he ? "׳¢׳“׳›׳•׳ ׳׳ ׳•׳™" : "״×״­״¯״« ״§„״§״´״×״±״§ƒ"}</button>
+      <button class="btn">${he ? "עדכון מנוי" : "تحديث الاشتراك"}</button>
     </form>
-    <p class="muted">${he ? "׳¢׳“׳›׳•׳ ׳™׳“׳ ׳™ ׳–׳׳ ׳™ ׳¢׳“ ׳—׳™׳‘׳•׳¨ ׳¡׳₪׳§ ׳×׳©׳׳•׳׳™׳." : "״×״­״¯״« ״¯ˆ …״₪‚״× ״¥„‰ ״£† ״×… ״±״¨״· ״¨ˆ״§״¨״© ״§„״¯״¹."}</p>
+    <p class="muted">${he ? "עדכון ידני זמני עד חיבור ספק תשלומים." : "تحديث يدوي مؤقت إلى أن يتم ربط بوابة الدفع."}</p>
   </div>`;
 }
 
@@ -1308,25 +1321,25 @@ function billingInvoicesPanel() {
         ${["USD", "ILS", "EUR"].map((currency) => `<option value="${currency}">${currency}</option>`).join("")}
       </select>
       <input name="periodStart" type="date" value="${new Date().toISOString().slice(0, 10)}">
-      <input name="notes" placeholder="${he ? "׳”׳¢׳¨׳•׳× ׳׳—׳©׳‘׳•׳ ׳™׳×" : "…„״§״­״¸״§״× ״§„״§״×ˆ״±״©"}">
-      <button class="btn secondary">${he ? "׳”׳•׳¦׳׳× ׳—׳©׳‘׳•׳ ׳™׳×" : "״¥״µ״¯״§״± ״§״×ˆ״±״©"}</button>
+      <input name="notes" placeholder="${he ? "הערות לחשבונית" : "ملاحظات الفاتورة"}">
+      <button class="btn secondary">${he ? "הוצאת חשבונית" : "إصدار فاتورة"}</button>
     </form>
     <div class="stack-list">
       ${invoices.map((invoice) => `<div class="feature-row">
-        <div><strong>${invoice.number}</strong><span>${invoice.currency} ${Number(invoice.amount || 0).toLocaleString()} ֲ· ${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}</span><small>${invoice.notes || invoice.dueAt || ""}</small></div>
-        <div class="actions"><span class="pill ${invoice.status === "paid" ? "done" : invoice.status === "void" ? "cancelled" : "pending"}">${invoiceStatusLabel(invoice.status)}</span>${invoice.status === "open" ? `<button class="btn secondary" data-invoice-paid="${invoice.id}">${he ? "׳©׳•׳׳׳”" : "…״¯ˆ״¹״©"}</button><button class="btn danger" data-invoice-void="${invoice.id}">${he ? "׳‘׳™׳˜׳•׳" : "״¥„״÷״§״¡"}</button>` : ""}</div>
-      </div>`).join("") || `<p class="muted">${he ? "׳׳™׳ ׳—׳©׳‘׳•׳ ׳™׳•׳× ׳¢׳“׳™׳™׳" : "„״§ ״×ˆ״¬״¯ ˆ״§״×״± ״¨״¹״¯"}</p>`}
+        <div><strong>${invoice.number}</strong><span>${invoice.currency} ${Number(invoice.amount || 0).toLocaleString()} · ${invoice.periodStart || "-"} - ${invoice.periodEnd || "-"}</span><small>${invoice.notes || invoice.dueAt || ""}</small></div>
+        <div class="actions"><span class="pill ${invoice.status === "paid" ? "done" : invoice.status === "void" ? "cancelled" : "pending"}">${invoiceStatusLabel(invoice.status)}</span>${invoice.status === "open" ? `<button class="btn secondary" data-invoice-paid="${invoice.id}">${he ? "שולמה" : "مدفوعة"}</button><button class="btn danger" data-invoice-void="${invoice.id}">${he ? "ביטול" : "إلغاء"}</button>` : ""}</div>
+      </div>`).join("") || `<p class="muted">${he ? "אין חשבוניות עדיין" : "لا توجد فواتير بعد"}</p>`}
     </div>
   `;
 }
 
 renderBilling = function () {
-  if (state.user.role !== "admin") return `<div class="card"><p class="muted">${state.lang === "he" ? "׳׳׳ ׳”׳׳™׳ ׳‘׳׳‘׳“" : "„„…״¯״± ‚״·"}</p></div>`;
+  if (state.user.role !== "admin") return `<div class="card"><p class="muted">${state.lang === "he" ? "למנהלים בלבד" : "للمدير فقط"}</p></div>`;
   return html`
     <div class="settings-grid">
       ${billingCard()}
       <div class="card">
-        <h3>${state.lang === "he" ? "׳—׳©׳‘׳•׳ ׳™׳•׳×" : "״§„ˆ״§״×״±"}</h3>
+        <h3>${state.lang === "he" ? "חשבוניות" : "الفواتير"}</h3>
         ${billingInvoicesPanel()}
       </div>
     </div>
@@ -1334,7 +1347,7 @@ renderBilling = function () {
 }
 
 renderWhatsApp = function () {
-  if (state.user.role !== "admin") return `<div class="card"><p class="muted">${state.lang === "he" ? "׳׳׳ ׳”׳׳™׳ ׳‘׳׳‘׳“" : "„„…״¯״± ‚״·"}</p></div>`;
+  if (state.user.role !== "admin") return `<div class="card"><p class="muted">${state.lang === "he" ? "למנהלים בלבד" : "للمدير فقط"}</p></div>`;
   const s = state.data.settings || {};
   const he = state.lang === "he";
   const logs = state.data.messageLogs || [];
@@ -1343,22 +1356,22 @@ renderWhatsApp = function () {
       <div class="card">
         <h3>WhatsApp</h3>
         <form id="clinicSettingsForm">
-          ${field("whatsappTemplate", he ? "׳×׳‘׳ ׳™׳× ׳×׳–׳›׳•׳¨׳× ׳׳×׳•׳¨" : "״±״³״§„״© ״×״°ƒ״± ״§„…ˆ״¹״¯", s.whatsappTemplate || "", "textarea", false, "full")}
-          ${select("whatsappEnabled", he ? "׳”׳₪׳¢׳׳× WhatsApp" : "״×״¹„ WhatsApp", [["false", he ? "׳§׳™׳©׳•׳¨ ׳‘׳׳‘׳“" : "״±״§״¨״· ‚״·"], ["true", he ? "׳₪׳¢׳™׳ ׳“׳¨׳ API" : "…״¹„ ״¹״¨״± API"]], s.whatsappEnabled || "false")}
-          ${select("whatsappMode", he ? "׳׳¦׳‘ ׳©׳׳™׳—׳”" : "ˆ״¶״¹ ״§„״¥״±״³״§„", [["fallback", he ? "׳§׳™׳©׳•׳¨ WhatsApp" : "״±״§״¨״· WhatsApp"], ["cloud", he ? "ˆ״§״¬‡״© Meta ״§„״³״­״§״¨״©" : "ˆ״§״¬‡״© Meta ״§„״³״­״§״¨״©"]], s.whatsappMode || "fallback")}
-          ${field("whatsappBusinessPhone", he ? "׳׳¡׳₪׳¨ ׳¢׳¡׳§׳™" : "״±‚… ״§„״¹…„", s.whatsappBusinessPhone || "", "text", false)}
-          ${field("whatsappFeedbackTemplate", he ? "׳×׳‘׳ ׳™׳× ׳׳©׳•׳‘" : "‚״§„״¨ ״§„״×‚…", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
-          ${field("whatsappGiftTemplate", he ? "׳×׳‘׳ ׳™׳× ׳׳×׳ ׳”" : "‚״§„״¨ ״§„‡״¯״©", s.whatsappGiftTemplate || "", "textarea", false, "full")}
+          ${field("whatsappTemplate", he ? "תבנית תזכורת לתור" : "رسالة تذكير الموعد", s.whatsappTemplate || "", "textarea", false, "full")}
+          ${select("whatsappEnabled", he ? "הפעלת WhatsApp" : "تفعيل WhatsApp", [["false", he ? "קישור בלבד" : "رابط فقط"], ["true", he ? "פעיל דרך API" : "مفعل عبر API"]], s.whatsappEnabled || "false")}
+          ${select("whatsappMode", he ? "מצב שליחה" : "وضع الإرسال", [["fallback", he ? "קישור WhatsApp" : "رابط WhatsApp"], ["cloud", he ? "واجهة Meta السحابية" : "واجهة Meta السحابية"]], s.whatsappMode || "fallback")}
+          ${field("whatsappBusinessPhone", he ? "מספר עסקי" : "رقم العمل", s.whatsappBusinessPhone || "", "text", false)}
+          ${field("whatsappFeedbackTemplate", he ? "תבנית משוב" : "قالب التقييم", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
+          ${field("whatsappGiftTemplate", he ? "תבנית מתנה" : "قالب الهدية", s.whatsappGiftTemplate || "", "textarea", false, "full")}
           <button class="btn">${tr("save")}</button>
         </form>
       </div>
       <div class="card">
-        <h3>${he ? "׳™׳•׳׳ ׳”׳•׳“׳¢׳•׳×" : "״³״¬„ ״§„״±״³״§״¦„"}</h3>
+        <h3>${he ? "יומן הודעות" : "سجل الرسائل"}</h3>
         <div class="stack-list">
           ${logs.map((log) => `<div class="feature-row">
-            <div><strong>${log.recipient || "-"}</strong><span>${log.entity || ""} #${log.entityId || ""} ֲ· ${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>
+            <div><strong>${log.recipient || "-"}</strong><span>${log.entity || ""} #${log.entityId || ""} · ${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>
             <span class="pill ${log.status === "sent" || log.status === "dry_run" ? "done" : log.status === "failed" ? "cancelled" : "pending"}">${messageStatusLabel(log.status)}</span>
-          </div>`).join("") || `<p class="muted">${he ? "׳׳™׳ ׳”׳•׳“׳¢׳•׳× ׳¢׳“׳™׳™׳" : "„״§ ״×ˆ״¬״¯ ״±״³״§״¦„ ״¨״¹״¯"}</p>`}
+          </div>`).join("") || `<p class="muted">${he ? "אין הודעות עדיין" : "لا توجد رسائل بعد"}</p>`}
         </div>
       </div>
     </div>
@@ -1370,51 +1383,51 @@ function renderSettingsHe(message = "") {
   const he = state.lang === "he";
   return html`
     <div class="settings-grid">
-      ${state.user.role === "admin" ? `<div class="card"><h3>${he ? "׳”׳’׳“׳¨׳•׳× ׳§׳׳™׳ ׳™׳§׳”" : "״¥״¹״¯״§״¯״§״× ״§„״¹״§״¯״©"}</h3><form id="clinicSettingsForm">
-        ${field("clinicName", he ? "׳©׳ ׳”׳§׳׳™׳ ׳™׳§׳”" : "״§״³… ״§„״¹״§״¯״©", s.clinicName || "Clinova")}
-        <div class="field"><label>${he ? "׳׳•׳’׳• ׳”׳׳¢׳¨׳›׳×" : "„ˆ״÷ˆ ״§„†״¸״§…"}</label><div class="logo-upload"><img id="logoPreview" src="${logoSrc()}" alt="Clinova"><input name="logoFile" id="logoFile" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"><input name="logoUrl" id="logoUrlInput" type="hidden" value="${escapeAttr(s.logoUrl || "/logo.svg")}"></div></div>
-        ${field("currency", he ? "׳׳˜׳‘׳¢" : "״§„״¹…„״©", s.currency || "ג‚×")}
-        ${field("workStart", he ? "׳×׳—׳™׳׳× ׳™׳•׳ ׳¢׳‘׳•׳“׳”" : "״¨״¯״§״© ״§„״¯ˆ״§…", s.workStart || "09:00", "time")}
-        ${field("workEnd", he ? "׳¡׳™׳•׳ ׳™׳•׳ ׳¢׳‘׳•׳“׳”" : "†‡״§״© ״§„״¯ˆ״§…", s.workEnd || "18:00", "time")}
-        <div class="field full"><label>${he ? "׳™׳׳™ ׳¢׳‘׳•׳“׳”" : "״£״§… ״§„״¹…„"}</label>${workDaysPicker(s.workDays)}</div>
-        ${field("whatsappTemplate", he ? "׳”׳•׳“׳¢׳× WhatsApp" : "״±״³״§„״© WhatsApp", s.whatsappTemplate || "", "textarea", false, "full")}
-        ${select("whatsappEnabled", he ? "WhatsApp ׳₪׳¢׳™׳" : "״×״¹„ WhatsApp", [["false", he ? "׳׳¦׳‘ ״±״§״¨״· ׳‘׳׳‘׳“" : "״±״§״¨״· ‚״·"], ["true", he ? "׳₪׳¢׳™׳ ׳“׳¨׳ API" : "…״¹„ ״¹״¨״± API"]], s.whatsappEnabled || "false")}
-        ${select("whatsappMode", he ? "׳׳¦׳‘ ׳©׳׳™׳—׳”" : "ˆ״¶״¹ ״§„״¥״±״³״§„", [["fallback", he ? "׳§׳™׳©׳•׳¨ WhatsApp" : "״±״§״¨״· WhatsApp"], ["cloud", he ? "Meta Cloud API" : "Meta Cloud API"]], s.whatsappMode || "fallback")}
-        ${field("whatsappBusinessPhone", he ? "׳׳¡׳₪׳¨ WhatsApp Business" : "״±‚… WhatsApp Business", s.whatsappBusinessPhone || "", "text", false)}
-        ${field("whatsappFeedbackTemplate", he ? "׳×׳‘׳ ׳™׳× ׳׳©׳•׳‘" : "‚״§„״¨ ״§„״×‚…", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
-        ${field("whatsappGiftTemplate", he ? "׳×׳‘׳ ׳™׳× ׳׳×׳ ׳”" : "‚״§„״¨ ״§„‡״¯״©", s.whatsappGiftTemplate || "", "textarea", false, "full")}
+      ${state.user.role === "admin" ? `<div class="card"><h3>${he ? "הגדרות קליניקה" : "إعدادات العيادة"}</h3><form id="clinicSettingsForm">
+        ${field("clinicName", he ? "שם הקליניקה" : "اسم العيادة", s.clinicName || "Clinova")}
+        <div class="field"><label>${he ? "לוגו המערכת" : "لوغو النظام"}</label><div class="logo-upload"><img id="logoPreview" src="${logoSrc()}" alt="Clinova"><input name="logoFile" id="logoFile" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"><input name="logoUrl" id="logoUrlInput" type="hidden" value="${escapeAttr(s.logoUrl || "/logo.svg")}"></div></div>
+        ${field("currency", he ? "מטבע" : "العملة", s.currency || "₪")}
+        ${field("workStart", he ? "תחילת יום עבודה" : "بداية الدوام", s.workStart || "09:00", "time")}
+        ${field("workEnd", he ? "סיום יום עבודה" : "نهاية الدوام", s.workEnd || "18:00", "time")}
+        <div class="field full"><label>${he ? "ימי עבודה" : "أيام العمل"}</label>${workDaysPicker(s.workDays)}</div>
+        ${field("whatsappTemplate", he ? "הודעת WhatsApp" : "رسالة WhatsApp", s.whatsappTemplate || "", "textarea", false, "full")}
+        ${select("whatsappEnabled", he ? "WhatsApp פעיל" : "تفعيل WhatsApp", [["false", he ? "מצב رابط בלבד" : "رابط فقط"], ["true", he ? "פעיל דרך API" : "مفعل عبر API"]], s.whatsappEnabled || "false")}
+        ${select("whatsappMode", he ? "מצב שליחה" : "وضع الإرسال", [["fallback", he ? "קישור WhatsApp" : "رابط WhatsApp"], ["cloud", he ? "Meta Cloud API" : "Meta Cloud API"]], s.whatsappMode || "fallback")}
+        ${field("whatsappBusinessPhone", he ? "מספר WhatsApp Business" : "رقم WhatsApp Business", s.whatsappBusinessPhone || "", "text", false)}
+        ${field("whatsappFeedbackTemplate", he ? "תבנית משוב" : "قالب التقييم", s.whatsappFeedbackTemplate || "", "textarea", false, "full")}
+        ${field("whatsappGiftTemplate", he ? "תבנית מתנה" : "قالب الهدية", s.whatsappGiftTemplate || "", "textarea", false, "full")}
         <button class="btn">${tr("save")}</button></form>
-        <div class="backup-panel"><h3>${he ? "׳¢׳•׳×׳§ ׳—׳™׳¦׳•׳ ׳™ ׳©׳ ׳”׳׳¢׳¨׳›׳×" : "†״³״®״© ״®״§״±״¬״© …† ״§„†״¸״§…"}</h3><p class="muted">${he ? "׳”׳•׳¨׳“׳× ׳¢׳•׳×׳§ ׳©׳ ׳‘׳¡׳™׳¡ ׳”׳ ׳×׳•׳ ׳™׳ ׳׳׳—׳©׳‘." : "״×״­…„ †״³״®״© ‚״§״¹״¯״© ״§„״¨״§†״§״× ״¹„‰ ״¬‡״§״² ״§„ƒ…״¨ˆ״×״±."}</p><a class="btn secondary" href="/api/system/export" download>${he ? "׳”׳•׳¨׳“׳× ׳¢׳•׳×׳§" : "״×״­…„ ״§„†״³״®״©"}</a></div></div>` : ""}
+        <div class="backup-panel"><h3>${he ? "עותק חיצוני של המערכת" : "نسخة خارجية من النظام"}</h3><p class="muted">${he ? "הורדת עותק של בסיס הנתונים למחשב." : "تحميل نسخة قاعدة البيانات على جهاز الكمبيوتر."}</p><a class="btn secondary" href="/api/system/export" download>${he ? "הורדת עותק" : "تحميل النسخة"}</a></div></div>` : ""}
       ${state.user.role === "admin" ? billingCard() : ""}
       ${state.user.role === "admin" ? restoreCard() : ""}
-      <div class="card"><h3>${he ? "׳©׳™׳ ׳•׳™ ׳¡׳™׳¡׳׳”" : "״×״÷״± ƒ„…״© ״§„…״±ˆ״±"}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="passwordForm"><div class="field"><label>${he ? "׳¡׳™׳¡׳׳” ׳ ׳•׳›׳—׳™׳×" : "ƒ„…״© ״§„…״±ˆ״± ״§„״­״§„״©"}</label><input name="currentPassword" type="password" required></div><div class="field"><label>${he ? "׳¡׳™׳¡׳׳” ׳—׳“׳©׳”" : "ƒ„…״© ״§„…״±ˆ״± ״§„״¬״¯״¯״©"}</label><input name="newPassword" type="password" minlength="8" required></div><button class="btn">${he ? "׳©׳™׳ ׳•׳™ ׳¡׳™׳¡׳׳”" : "״×״÷״± ƒ„…״© ״§„…״±ˆ״±"}</button></form></div>
+      <div class="card"><h3>${he ? "שינוי סיסמה" : "تغيير كلمة المرور"}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="passwordForm"><div class="field"><label>${he ? "סיסמה נוכחית" : "كلمة المرور الحالية"}</label><input name="currentPassword" type="password" required></div><div class="field"><label>${he ? "סיסמה חדשה" : "كلمة المرور الجديدة"}</label><input name="newPassword" type="password" minlength="8" required></div><button class="btn">${he ? "שינוי סיסמה" : "تغيير كلمة المرور"}</button></form></div>
     </div>
   `;
 }
 
 renderTeamUsers = function () {
   const he = state.lang === "he";
-  const h = he ? ["׳©׳ ׳׳©׳×׳׳©", "׳׳™׳׳™׳™׳", "׳©׳", "׳×׳₪׳§׳™׳“", "׳₪׳¢׳™׳"] : ["״§״³… ״§„…״³״×״®״¯…", "״§„״¨״±״¯", "״§„״§״³…", "״§„״¯ˆ״±", "״¹״§„"];
+  const h = he ? ["שם משתמש", "אימייל", "שם", "תפקיד", "פעיל"] : ["اسم المستخدم", "البريد", "الاسم", "الدور", "فعال"];
   const pending = (state.data.invitations || []).filter((invite) => !invite.acceptedAt && Number(invite.expiresAt || 0) > Date.now());
   return html`
     <div class="feature-grid">
       <div class="card">
-        <h3>${he ? "׳”׳–׳׳ ׳× ׳׳™׳© ׳¦׳•׳•׳×" : "״¯״¹ˆ״© ״¹״¶ˆ ״±‚"}</h3>
+        <h3>${he ? "הזמנת איש צוות" : "دعوة عضو فريق"}</h3>
         <form id="inviteUserForm" class="inline-form">
-          <input name="name" placeholder="${he ? "׳©׳" : "״§„״§״³…"}" required>
-          <input name="email" type="email" placeholder="${he ? "׳׳™׳׳™׳™׳" : "״§„״¨״±״¯"}" required>
+          <input name="name" placeholder="${he ? "שם" : "الاسم"}" required>
+          <input name="email" type="email" placeholder="${he ? "אימייל" : "البريد"}" required>
           <select name="role" required>
             <option value="therapist">${roleLabel("therapist")}</option>
             <option value="reception">${roleLabel("reception")}</option>
             <option value="admin">${roleLabel("admin")}</option>
           </select>
-          <button class="btn">${he ? "׳™׳¦׳™׳¨׳× ׳”׳–׳׳ ׳”" : "״¥†״´״§״¡ ״¯״¹ˆ״©"}</button>
+          <button class="btn">${he ? "יצירת הזמנה" : "إنشاء دعوة"}</button>
         </form>
       </div>
       <div class="card">
-        <h3>${he ? "׳”׳–׳׳ ׳•׳× ׳₪׳×׳•׳—׳•׳×" : "״§„״¯״¹ˆ״§״× ״§„…״×ˆ״­״©"}</h3>
+        <h3>${he ? "הזמנות פתוחות" : "الدعوات المفتوحة"}</h3>
         <div class="stack-list">
-          ${pending.map((invite) => `<div class="feature-row"><div><strong>${invite.name}</strong><span>${invite.email} - ${roleLabel(invite.role)}</span><small>${new Date(Number(invite.expiresAt)).toLocaleDateString()}</small></div><div class="actions"><button class="btn secondary" data-copy-invite="${escapeAttr(invite.inviteUrl)}">${he ? "׳”׳¢׳×׳§׳”" : "†״³״®"}</button><button class="btn danger" data-revoke-invite="${invite.id}">${he ? "׳‘׳™׳˜׳•׳" : "״¥„״÷״§״¡"}</button></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}
+          ${pending.map((invite) => `<div class="feature-row"><div><strong>${invite.name}</strong><span>${invite.email} - ${roleLabel(invite.role)}</span><small>${new Date(Number(invite.expiresAt)).toLocaleDateString()}</small></div><div class="actions"><button class="btn secondary" data-copy-invite="${escapeAttr(invite.inviteUrl)}">${he ? "העתקה" : "نسخ"}</button><button class="btn danger" data-revoke-invite="${invite.id}">${he ? "ביטול" : "إلغاء"}</button></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}
         </div>
       </div>
     </div>
@@ -1427,27 +1440,27 @@ formFieldsHe = function (resource, row) {
   if (resource === "clients") {
     const tagsValue = Array.isArray(row.tags) ? row.tags.join(", ") : String(row.tags || "");
     return html`
-      ${field("fname", he ? "׳©׳ ׳₪׳¨׳˜׳™" : "״§„״§״³… ״§„״£ˆ„", row.fname)}
-      ${field("lname", he ? "׳©׳ ׳׳©׳₪׳—׳”" : "״§״³… ״§„״¹״§״¦„״©", row.lname)}
-      ${field("phone", he ? "׳˜׳׳₪׳•׳" : "״§„‡״§״×", row.phone)}
-      ${field("email", he ? "׳׳™׳׳™׳™׳" : "״§„״¨״±״¯", row.email, "email", false)}
-      ${select("therapistId", he ? "׳׳˜׳₪׳׳×" : "״§„…״¹״§„״¬״©", therapists(), row.therapistId, false)}
-      ${select("stage", he ? "׳©׳׳‘ CRM" : "…״±״­„״© CRM", [["lead", crmStageLabel("lead")], ["qualified", crmStageLabel("qualified")], ["active", crmStageLabel("active")], ["vip", "VIP"], ["lost", crmStageLabel("lost")]], row.stage || "lead")}
-      ${field("source", he ? "׳׳§׳•׳¨" : "״§„…״µ״¯״±", row.source || "", "text", false)}
-      ${field("tags", he ? "׳×׳’׳™׳•׳×" : "״§„ˆ״³ˆ…", tagsValue, "text", false)}
-      ${field("notes", he ? "׳”׳¢׳¨׳•׳×" : "…„״§״­״¸״§״×", row.notes, "textarea", false, "full")}
+      ${field("fname", he ? "שם פרטי" : "الاسم الأول", row.fname)}
+      ${field("lname", he ? "שם משפחה" : "اسم العائلة", row.lname)}
+      ${field("phone", he ? "טלפון" : "الهاتف", row.phone)}
+      ${field("email", he ? "אימייל" : "البريد", row.email, "email", false)}
+      ${select("therapistId", he ? "מטפלת" : "المعالجة", therapists(), row.therapistId, false)}
+      ${select("stage", he ? "שלב CRM" : "مرحلة CRM", [["lead", crmStageLabel("lead")], ["qualified", crmStageLabel("qualified")], ["active", crmStageLabel("active")], ["vip", "VIP"], ["lost", crmStageLabel("lost")]], row.stage || "lead")}
+      ${field("source", he ? "מקור" : "المصدر", row.source || "", "text", false)}
+      ${field("tags", he ? "תגיות" : "الوسوم", tagsValue, "text", false)}
+      ${field("notes", he ? "הערות" : "ملاحظات", row.notes, "textarea", false, "full")}
     `;
   }
-  if (resource === "clients") return html`${field("fname", he ? "׳©׳ ׳₪׳¨׳˜׳™" : "״§„״§״³… ״§„״£ˆ„", row.fname)}${field("lname", he ? "׳©׳ ׳׳©׳₪׳—׳”" : "״§״³… ״§„״¹״§״¦„״©", row.lname)}${field("phone", he ? "׳˜׳׳₪׳•׳" : "״§„‡״§״×", row.phone)}${field("email", he ? "׳׳™׳׳™׳™׳" : "״§„״¨״±״¯", row.email, "email", false)}${select("therapistId", he ? "׳׳˜׳₪׳׳×" : "״§„…״¹״§„״¬״©", therapists(), row.therapistId, false)}${field("notes", he ? "׳”׳¢׳¨׳•׳×" : "…„״§״­״¸״§״×", row.notes, "textarea", false, "full")}`;
+  if (resource === "clients") return html`${field("fname", he ? "שם פרטי" : "الاسم الأول", row.fname)}${field("lname", he ? "שם משפחה" : "اسم العائلة", row.lname)}${field("phone", he ? "טלפון" : "الهاتف", row.phone)}${field("email", he ? "אימייל" : "البريد", row.email, "email", false)}${select("therapistId", he ? "מטפלת" : "المعالجة", therapists(), row.therapistId, false)}${field("notes", he ? "הערות" : "ملاحظات", row.notes, "textarea", false, "full")}`;
   if (resource === "appointments") {
     const isCalendarNew = row.fromCalendar && !row.id;
     const therapistValue = isCalendarNew ? "" : row.therapistId || state.user.id;
     const therapistRequired = isCalendarNew ? true : state.user.role !== "therapist";
-    return html`${searchableClientField(row.clientId || "")}${select("serviceId", he ? "׳©׳™׳¨׳•׳×" : "״§„״®״¯…״©", state.data.services.filter((s) => s.active).map((s) => [s.id, s.name]), row.serviceId || "", true)}${select("therapistId", he ? "׳׳˜׳₪׳׳×" : "״§„…״¹״§„״¬״©", therapists(), therapistValue, therapistRequired)}${field("date", he ? "׳×׳׳¨׳™׳" : "״§„״×״§״±״®", row.date || new Date().toISOString().slice(0, 10), "date")}${field("time", he ? "׳©׳¢׳”" : "״§„ˆ‚״×", row.time || "09:00", "time")}${select("status", he ? "׳¡׳˜׳˜׳•׳¡" : "״§„״­״§„״©", [["pending", statusLabel.pending], ["done", statusLabel.done], ["cancelled", statusLabel.cancelled]], row.status || "pending")}${select("paymentStatus", he ? "׳׳¦׳‘ ׳×׳©׳׳•׳" : "״­״§„״© ״§„״¯״¹", [["unpaid", paymentLabel.unpaid], ["paid", paymentLabel.paid], ["deposit", paymentLabel.deposit]], row.paymentStatus || "unpaid")}${field("paidAmount", he ? "׳¡׳›׳•׳ ׳©׳©׳•׳׳" : "״§„…״¨„״÷ ״§„…״¯ˆ״¹", row.paidAmount || 0, "number", false)}${field("notes", he ? "׳”׳¢׳¨׳•׳×" : "…„״§״­״¸״§״×", row.notes, "textarea", false, "full")}`;
+    return html`${searchableClientField(row.clientId || "")}${select("serviceId", he ? "שירות" : "الخدمة", state.data.services.filter((s) => s.active).map((s) => [s.id, s.name]), row.serviceId || "", true)}${select("therapistId", he ? "מטפלת" : "المعالجة", therapists(), therapistValue, therapistRequired)}${field("date", he ? "תאריך" : "التاريخ", row.date || new Date().toISOString().slice(0, 10), "date")}${field("time", he ? "שעה" : "الوقت", row.time || "09:00", "time")}${select("status", he ? "סטטוס" : "الحالة", [["pending", statusLabel.pending], ["done", statusLabel.done], ["cancelled", statusLabel.cancelled]], row.status || "pending")}${select("paymentStatus", he ? "מצב תשלום" : "حالة الدفع", [["unpaid", paymentLabel.unpaid], ["paid", paymentLabel.paid], ["deposit", paymentLabel.deposit]], row.paymentStatus || "unpaid")}${field("paidAmount", he ? "סכום ששולם" : "المبلغ المدفوع", row.paidAmount || 0, "number", false)}${field("notes", he ? "הערות" : "ملاحظات", row.notes, "textarea", false, "full")}`;
   }
-  if (resource === "categories") return field("name", he ? "׳©׳ ׳§׳˜׳’׳•׳¨׳™׳”" : "״§״³… ״§„‚״³…", row.name);
-  if (resource === "services") return html`${field("name", he ? "׳©׳ ׳©׳™׳¨׳•׳×" : "״§״³… ״§„״®״¯…״©", row.name)}${select("categoryId", he ? "׳§׳˜׳’׳•׳¨׳™׳”" : "״§„‚״³…", state.data.categories.map((c) => [c.id, c.name]), row.categoryId)}${field("duration", he ? "׳׳©׳ ׳‘׳“׳§׳•׳×" : "״§„…״¯״© ״¨״§„״¯‚״§״¦‚", row.duration || 60, "number")}${field("price", he ? "׳׳—׳™׳¨" : "״§„״³״¹״±", row.price || 0, "number")}${select("active", he ? "׳₪׳¢׳™׳" : "״¹״§„", [["true", yesNo(true)], ["false", yesNo(false)]], String(row.active !== false))}`;
-  if (resource === "users") return html`${field("username", he ? "׳©׳ ׳׳©׳×׳׳©" : "״§״³… ״§„…״³״×״®״¯…", row.username)}${field("password", row.id ? (he ? "׳¡׳™׳¡׳׳” ׳—׳“׳©׳” ׳׳•׳₪׳¦׳™׳•׳ ׳׳™׳×" : "ƒ„…״© …״±ˆ״± ״¬״¯״¯״© ״§״®״×״§״±״©") : (he ? "׳¡׳™׳¡׳׳”" : "ƒ„…״© ״§„…״±ˆ״±"), "", "password", !row.id)}${field("name", he ? "׳©׳" : "״§„״§״³…", row.name)}${field("title", he ? "׳×׳™׳׳•׳¨ ׳×׳₪׳§׳™׳“" : "״§„ˆ״µ ״§„ˆ״¸", row.title, "text", false)}${select("role", he ? "׳×׳₪׳§׳™׳“" : "״§„״¯ˆ״±", [["admin", roleLabel("admin")], ["reception", roleLabel("reception")], ["therapist", roleLabel("therapist")]], row.role || "therapist")}${select("active", he ? "׳₪׳¢׳™׳" : "״¹״§„", [["true", yesNo(true)], ["false", yesNo(false)]], String(row.active !== false))}`;
+  if (resource === "categories") return field("name", he ? "שם קטגוריה" : "اسم القسم", row.name);
+  if (resource === "services") return html`${field("name", he ? "שם שירות" : "اسم الخدمة", row.name)}${select("categoryId", he ? "קטגוריה" : "القسم", state.data.categories.map((c) => [c.id, c.name]), row.categoryId)}${field("duration", he ? "משך בדקות" : "المدة بالدقائق", row.duration || 60, "number")}${field("price", he ? "מחיר" : "السعر", row.price || 0, "number")}${select("active", he ? "פעיל" : "فعال", [["true", yesNo(true)], ["false", yesNo(false)]], String(row.active !== false))}`;
+  if (resource === "users") return html`${field("username", he ? "שם משתמש" : "اسم المستخدم", row.username)}${field("password", row.id ? (he ? "סיסמה חדשה אופציונלית" : "كلمة مرور جديدة اختيارية") : (he ? "סיסמה" : "كلمة المرور"), "", "password", !row.id)}${field("name", he ? "שם" : "الاسم", row.name)}${field("title", he ? "תיאור תפקיד" : "الوصف الوظيفي", row.title, "text", false)}${select("role", he ? "תפקיד" : "الدور", [["admin", roleLabel("admin")], ["reception", roleLabel("reception")], ["therapist", roleLabel("therapist")]], row.role || "therapist")}${select("active", he ? "פעיל" : "فعال", [["true", yesNo(true)], ["false", yesNo(false)]], String(row.active !== false))}`;
   return "";
 }
 
@@ -1499,20 +1512,20 @@ function calendarDay(day, view) {
     <section class="calendar-day ${date === new Date().toISOString().slice(0, 10) ? "today" : ""}" data-calendar-date="${date}">
       <header><strong>${day.getDate()}</strong><span>${date}</span></header>
       <div class="calendar-events">
-        ${rows.map((a) => `<button data-open-appointment="${a.id}" class="calendar-event ${a.status}"><span>${a.time}</span><strong>${a.clientName}</strong><em>${a.serviceName}</em></button>`).join("") || `<div class="calendar-empty">${view === "month" ? "" : "׳׳™׳ ׳×׳•׳¨׳™׳"}</div>`}
+        ${rows.map((a) => `<button data-open-appointment="${a.id}" class="calendar-event ${a.status}"><span>${a.time}</span><strong>${a.clientName}</strong><em>${a.serviceName}</em></button>`).join("") || `<div class="calendar-empty">${view === "month" ? "" : "אין תורים"}</div>`}
       </div>
     </section>
   `;
 }
 
 function simpleTable(resource, heads, rows, mapRow) {
-  const actionLabel = state.lang === "he" ? "׳₪׳¢׳•׳׳•׳×" : "״¥״¬״±״§״¡״§״×";
+  const actionLabel = state.lang === "he" ? "פעולות" : "إجراءات";
   return html`
     <div class="table-wrap responsive-table resource-${resource}">
       <table>
         <thead><tr>${heads.map((h) => `<th>${h}</th>`).join("")}<th></th></tr></thead>
         <tbody>
-          ${rows.map((row) => `<tr>${mapRow(row).map((cell, index) => `<td data-label="${escapeAttr(heads[index] || "")}">${cell}</td>`).join("")}<td class="actions" data-label="${escapeAttr(actionLabel)}"><button class="btn secondary" data-edit="${resource}" data-id="${row.id}">׳¢׳¨׳™׳›׳”</button><button class="btn danger" data-delete="${resource}" data-id="${row.id}">׳׳—׳™׳§׳”</button></td></tr>`).join("") || `<tr><td colspan="${heads.length + 1}" class="muted">׳׳™׳ ׳ ׳×׳•׳ ׳™׳</td></tr>`}
+          ${rows.map((row) => `<tr>${mapRow(row).map((cell, index) => `<td data-label="${escapeAttr(heads[index] || "")}">${cell}</td>`).join("")}<td class="actions" data-label="${escapeAttr(actionLabel)}"><button class="btn secondary" data-edit="${resource}" data-id="${row.id}">עריכה</button><button class="btn danger" data-delete="${resource}" data-id="${row.id}">מחיקה</button></td></tr>`).join("") || `<tr><td colspan="${heads.length + 1}" class="muted">אין נתונים</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1520,20 +1533,20 @@ function simpleTable(resource, heads, rows, mapRow) {
 }
 
 renderAudit = function () {
-  const actions = { login: "׳›׳ ׳™׳¡׳”", create: "׳™׳¦׳™׳¨׳”", update: "׳¢׳“׳›׳•׳", delete: "׳׳—׳™׳§׳”", archive: "׳׳¨׳›׳•׳‘", deactivate: "׳”׳©׳‘׳×׳”", change_password: "׳©׳™׳ ׳•׳™ ׳¡׳™׳¡׳׳”", export: "׳™׳™׳¦׳•׳" };
-  const entities = { users: "׳׳©׳×׳׳©׳™׳", clients: "׳׳§׳•׳—׳•׳×", appointments: "׳×׳•׳¨׳™׳", services: "׳©׳™׳¨׳•׳×׳™׳", categories: "׳§׳˜׳’׳•׳¨׳™׳•׳×", settings: "׳”׳’׳“׳¨׳•׳×", session: "׳›׳ ׳™׳¡׳”", system: "׳׳¢׳¨׳›׳×", client_files: "׳§׳‘׳¦׳™ ׳׳§׳•׳—" };
+  const actions = { login: "כניסה", create: "יצירה", update: "עדכון", delete: "מחיקה", archive: "ארכוב", deactivate: "השבתה", change_password: "שינוי סיסמה", export: "ייצוא" };
+  const entities = { users: "משתמשים", clients: "לקוחות", appointments: "תורים", services: "שירותים", categories: "קטגוריות", settings: "הגדרות", session: "כניסה", system: "מערכת", client_files: "קבצי לקוח" };
   return html`
     <div class="table-wrap">
       <table>
-        <thead><tr><th>׳–׳׳</th><th>׳׳©׳×׳׳©</th><th>׳₪׳¢׳•׳׳”</th><th>׳¡׳•׳’</th><th>׳׳¡׳₪׳¨</th></tr></thead>
-        <tbody>${(state.data.audits || []).map((row) => `<tr><td>${row.createdAt}</td><td>${row.userName || "-"}</td><td>${actions[row.action] || row.action}</td><td>${entities[row.entity] || row.entity}</td><td>${row.entityId || "-"}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">׳׳™׳ ׳ ׳×׳•׳ ׳™׳</td></tr>`}</tbody>
+        <thead><tr><th>זמן</th><th>משתמש</th><th>פעולה</th><th>סוג</th><th>מספר</th></tr></thead>
+        <tbody>${(state.data.audits || []).map((row) => `<tr><td>${row.createdAt}</td><td>${row.userName || "-"}</td><td>${actions[row.action] || row.action}</td><td>${entities[row.entity] || row.entity}</td><td>${row.entityId || "-"}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">אין נתונים</td></tr>`}</tbody>
       </table>
     </div>
   `;
 }
 
 function rankList(rows) {
-  if (!rows.length) return `<p class="muted">׳׳™׳ ׳ ׳×׳•׳ ׳™׳</p>`;
+  if (!rows.length) return `<p class="muted">אין נתונים</p>`;
   return rows.map(([name, value]) => `<div class="rank-row"><span>${name}</span><strong>${currency()}${Number(value || 0).toLocaleString()}</strong></div>`).join("");
 }
 
@@ -1550,16 +1563,16 @@ renderReports = function () {
   return html`
     <div class="reports-shell">
       <div class="reports-tabs">
-        ${reportTabButton("overview", "׳¡׳§׳™׳¨׳”")}
-        ${reportTabButton("revenue", "׳”׳›׳ ׳¡׳•׳×")}
-        ${reportTabButton("appointments", "׳×׳•׳¨׳™׳")}
-        ${reportTabButton("clients", "׳׳§׳•׳—׳•׳×")}
-        ${reportTabButton("therapists", "׳׳˜׳₪׳׳•׳×")}
-        ${reportTabButton("conflicts", "׳”׳×׳ ׳’׳©׳•׳™׳•׳×")}
+        ${reportTabButton("overview", "סקירה")}
+        ${reportTabButton("revenue", "הכנסות")}
+        ${reportTabButton("appointments", "תורים")}
+        ${reportTabButton("clients", "לקוחות")}
+        ${reportTabButton("therapists", "מטפלות")}
+        ${reportTabButton("conflicts", "התנגשויות")}
       </div>
       <div class="filter-row">
-        <div class="report-alert ${conflicts.length ? "warning" : "success"}">${conflicts.length ? `׳™׳© ${conflicts.length} ׳”׳×׳ ׳’׳©׳•׳™׳•׳× ׳׳‘׳“׳™׳§׳”` : "׳׳™׳ ׳”׳×׳ ׳’׳©׳•׳™׳•׳× ׳‘׳×׳•׳¨׳™׳ ׳”׳ ׳•׳›׳—׳™׳™׳"}</div>
-        <div class="export-btns"><button class="btn secondary" data-export="appointments">׳™׳™׳¦׳•׳ ׳×׳•׳¨׳™׳ CSV</button><button class="btn secondary" data-export="clients">׳™׳™׳¦׳•׳ ׳׳§׳•׳—׳•׳× CSV</button></div>
+        <div class="report-alert ${conflicts.length ? "warning" : "success"}">${conflicts.length ? `יש ${conflicts.length} התנגשויות לבדיקה` : "אין התנגשויות בתורים הנוכחיים"}</div>
+        <div class="export-btns"><button class="btn secondary" data-export="appointments">ייצוא תורים CSV</button><button class="btn secondary" data-export="clients">ייצוא לקוחות CSV</button></div>
       </div>
       <div class="report-content">${renderReportTab(done, revenue, byTherapist, byService, conflicts)}</div>
     </div>
@@ -1568,8 +1581,8 @@ renderReports = function () {
 
 function renderReportTab(done, revenue, byTherapist, byService, conflicts) {
   const appointments = state.data.appointments;
-  if (state.reportTab === "revenue") return html`<div class="grid stats">${statCard("ג‚×", `${currency()}${revenue.toLocaleString()}`, "׳¡׳”׳´׳› ׳”׳›׳ ׳¡׳•׳×", "gold")}${statCard("ג†—", `${currency()}${done.length ? Math.round(revenue / done.length).toLocaleString() : 0}`, "׳׳׳•׳¦׳¢ ׳׳×׳•׳¨", "green")}${statCard("ג“", done.length, "׳×׳•׳¨׳™׳ ׳©׳‘׳•׳¦׳¢׳•", "blue")}${statCard("ג–£", byService.length, "׳©׳™׳¨׳•׳×׳™׳ ׳¢׳ ׳”׳›׳ ׳¡׳”", "purple")}</div><div class="report-grid-2"><div class="card"><h3>׳”׳›׳ ׳¡׳•׳× ׳׳₪׳™ ׳©׳™׳¨׳•׳×</h3>${rankList(byService)}</div><div class="card"><h3>׳”׳›׳ ׳¡׳•׳× ׳׳₪׳™ ׳׳˜׳₪׳׳×</h3>${rankList(byTherapist)}</div></div>`;
-  if (state.reportTab === "appointments") return html`<div class="grid stats">${statCard("נ“…", appointments.length, "׳¡׳”׳´׳› ׳×׳•׳¨׳™׳", "blue")}${statCard("ג“", done.length, "׳‘׳•׳¦׳¢׳•", "green")}${statCard("ג€¦", appointments.filter((a) => a.status === "pending").length, "׳׳׳×׳™׳ ׳™׳", "gold")}${statCard("ֳ—", appointments.filter((a) => a.status === "cancelled").length, "׳‘׳•׳˜׳׳•", "red")}</div>${appointmentTable(appointments, false)}`;
+  if (state.reportTab === "revenue") return html`<div class="grid stats">${statCard("₪", `${currency()}${revenue.toLocaleString()}`, "סה״כ הכנסות", "gold")}${statCard("↗", `${currency()}${done.length ? Math.round(revenue / done.length).toLocaleString() : 0}`, "ממוצע לתור", "green")}${statCard("✓", done.length, "תורים שבוצעו", "blue")}${statCard("▣", byService.length, "שירותים עם הכנסה", "purple")}</div><div class="report-grid-2"><div class="card"><h3>הכנסות לפי שירות</h3>${rankList(byService)}</div><div class="card"><h3>הכנסות לפי מטפלת</h3>${rankList(byTherapist)}</div></div>`;
+  if (state.reportTab === "appointments") return html`<div class="grid stats">${statCard("📅", appointments.length, "סה״כ תורים", "blue")}${statCard("✓", done.length, "בוצעו", "green")}${statCard("…", appointments.filter((a) => a.status === "pending").length, "ממתינים", "gold")}${statCard("×", appointments.filter((a) => a.status === "cancelled").length, "בוטלו", "red")}</div>${appointmentTable(appointments, false)}`;
   if (state.reportTab === "clients") {
     const activeClientIds = new Set(appointments.map((a) => a.clientId));
     const topClients = [...activeClientIds].map((id) => {
@@ -1577,7 +1590,7 @@ function renderReportTab(done, revenue, byTherapist, byService, conflicts) {
       const client = state.data.clients.find((c) => c.id === id);
       return [client ? `${client.fname} ${client.lname}` : "-", rows.reduce((sum, a) => sum + Number(a.price || 0), 0)];
     }).sort((a, b) => b[1] - a[1]);
-    return html`<div class="grid stats">${statCard("נ‘¥", state.data.clients.length, "׳¡׳”׳´׳› ׳׳§׳•׳—׳•׳×", "green")}${statCard("ג¡", activeClientIds.size, "׳׳§׳•׳—׳•׳× ׳¢׳ ׳×׳•׳¨׳™׳", "blue")}${statCard("ג—¼", state.data.clients.filter((c) => c.email || c.phone).length, "׳×׳™׳§׳™׳ ׳¢׳ ׳₪׳¨׳˜׳™ ׳§׳©׳¨", "gold")}${statCard("ג—†", topClients.length ? topClients[0][0] : "-", "׳׳§׳•׳— ׳׳•׳‘׳™׳", "purple")}</div><div class="card"><h3>׳׳§׳•׳—׳•׳× ׳׳•׳‘׳™׳׳™׳ ׳׳₪׳™ ׳”׳›׳ ׳¡׳”</h3>${rankList(topClients)}</div>`;
+    return html`<div class="grid stats">${statCard("👥", state.data.clients.length, "סה״כ לקוחות", "green")}${statCard("⚡", activeClientIds.size, "לקוחות עם תורים", "blue")}${statCard("◼", state.data.clients.filter((c) => c.email || c.phone).length, "תיקים עם פרטי קשר", "gold")}${statCard("◆", topClients.length ? topClients[0][0] : "-", "לקוח מוביל", "purple")}</div><div class="card"><h3>לקוחות מובילים לפי הכנסה</h3>${rankList(topClients)}</div>`;
   }
   if (state.reportTab === "therapists") {
     const rows = therapists().map(([id, name]) => {
@@ -1586,10 +1599,10 @@ function renderReportTab(done, revenue, byTherapist, byService, conflicts) {
       const rev = completed.reduce((sum, a) => sum + Number(a.price || 0), 0);
       return { name, all: all.length, completed: completed.length, cancelled: all.filter((a) => a.status === "cancelled").length, rev };
     });
-    return html`<div class="table-wrap"><table><thead><tr><th>׳׳˜׳₪׳׳×</th><th>׳›׳ ׳”׳×׳•׳¨׳™׳</th><th>׳‘׳•׳¦׳¢׳•</th><th>׳‘׳•׳˜׳׳•</th><th>׳׳—׳•׳– ׳‘׳™׳¦׳•׳¢</th><th>׳”׳›׳ ׳¡׳”</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.name}</td><td>${r.all}</td><td>${r.completed}</td><td>${r.cancelled}</td><td>${r.all ? Math.round(r.completed / r.all * 100) : 0}%</td><td>${currency()}${r.rev.toLocaleString()}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">׳׳™׳ ׳ ׳×׳•׳ ׳™׳</td></tr>`}</tbody></table></div>`;
+    return html`<div class="table-wrap"><table><thead><tr><th>מטפלת</th><th>כל התורים</th><th>בוצעו</th><th>בוטלו</th><th>אחוז ביצוע</th><th>הכנסה</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.name}</td><td>${r.all}</td><td>${r.completed}</td><td>${r.cancelled}</td><td>${r.all ? Math.round(r.completed / r.all * 100) : 0}%</td><td>${currency()}${r.rev.toLocaleString()}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">אין נתונים</td></tr>`}</tbody></table></div>`;
   }
-  if (state.reportTab === "conflicts") return html`<div class="grid stats">${statCard("!", conflicts.length, "׳¡׳”׳´׳› ׳”׳×׳ ׳’׳©׳•׳™׳•׳×", conflicts.length ? "red" : "green")}${statCard("נ‘₪", conflicts.filter((c) => c.reason === "׳׳•׳×׳” ׳׳˜׳₪׳׳×").length, "׳׳•׳×׳” ׳׳˜׳₪׳׳×", "gold")}${statCard("ג±", conflicts.filter((c) => c.reason === "׳—׳₪׳™׳₪׳× ׳–׳׳").length, "׳—׳₪׳™׳₪׳× ׳–׳׳", "blue")}${statCard("ג“", conflicts.length ? "׳‘׳“׳™׳§׳”" : "׳×׳§׳™׳", "׳׳¦׳‘ ׳”׳™׳•׳׳", "green")}</div><div class="table-wrap"><table><thead><tr><th>׳×׳׳¨׳™׳</th><th>׳©׳¢׳”</th><th>׳×׳•׳¨ ׳¨׳׳©׳•׳</th><th>׳×׳•׳¨ ׳©׳ ׳™</th><th>׳¡׳™׳‘׳”</th></tr></thead><tbody>${conflicts.map((c) => `<tr><td>${c.a.date}</td><td>${c.a.time} / ${c.b.time}</td><td>${c.a.clientName} - ${c.a.serviceName}</td><td>${c.b.clientName} - ${c.b.serviceName}</td><td><span class="pill cancelled">${c.reason}</span></td></tr>`).join("") || `<tr><td colspan="5" class="muted">׳׳™׳ ׳”׳×׳ ׳’׳©׳•׳™׳•׳×</td></tr>`}</tbody></table></div>`;
-  return html`<div class="grid stats">${statCard("נ“…", appointments.length, "׳¡׳”׳´׳› ׳×׳•׳¨׳™׳", "blue")}${statCard("ג“", done.length, "׳‘׳•׳¦׳¢׳•", "green")}${statCard("ג‚×", `${currency()}${revenue.toLocaleString()}`, "׳¡׳”׳´׳› ׳”׳›׳ ׳¡׳•׳×", "gold")}${statCard("!", conflicts.length, "׳”׳×׳ ׳’׳©׳•׳™׳•׳×", conflicts.length ? "red" : "green")}</div><div class="report-grid-2"><div class="card"><h3>׳”׳›׳ ׳¡׳•׳× ׳׳₪׳™ ׳©׳™׳¨׳•׳×</h3>${rankList(byService)}</div><div class="card"><h3>׳”׳›׳ ׳¡׳•׳× ׳׳₪׳™ ׳׳˜׳₪׳׳×</h3>${rankList(byTherapist)}</div></div>`;
+  if (state.reportTab === "conflicts") return html`<div class="grid stats">${statCard("!", conflicts.length, "סה״כ התנגשויות", conflicts.length ? "red" : "green")}${statCard("👤", conflicts.filter((c) => c.reason === "אותה מטפלת").length, "אותה מטפלת", "gold")}${statCard("⏱", conflicts.filter((c) => c.reason === "חפיפת זמן").length, "חפיפת זמן", "blue")}${statCard("✓", conflicts.length ? "בדיקה" : "תקין", "מצב היומן", "green")}</div><div class="table-wrap"><table><thead><tr><th>תאריך</th><th>שעה</th><th>תור ראשון</th><th>תור שני</th><th>סיבה</th></tr></thead><tbody>${conflicts.map((c) => `<tr><td>${c.a.date}</td><td>${c.a.time} / ${c.b.time}</td><td>${c.a.clientName} - ${c.a.serviceName}</td><td>${c.b.clientName} - ${c.b.serviceName}</td><td><span class="pill cancelled">${c.reason}</span></td></tr>`).join("") || `<tr><td colspan="5" class="muted">אין התנגשויות</td></tr>`}</tbody></table></div>`;
+  return html`<div class="grid stats">${statCard("📅", appointments.length, "סה״כ תורים", "blue")}${statCard("✓", done.length, "בוצעו", "green")}${statCard("₪", `${currency()}${revenue.toLocaleString()}`, "סה״כ הכנסות", "gold")}${statCard("!", conflicts.length, "התנגשויות", conflicts.length ? "red" : "green")}</div><div class="report-grid-2"><div class="card"><h3>הכנסות לפי שירות</h3>${rankList(byService)}</div><div class="card"><h3>הכנסות לפי מטפלת</h3>${rankList(byTherapist)}</div></div>`;
 }
 
 function findReportConflicts() {
@@ -1605,8 +1618,8 @@ function findReportConflicts() {
       const bStart = toMinutes(b.time);
       const bEnd = bStart + Number(b.duration || 0);
       const overlaps = !(aEnd <= bStart || aStart >= bEnd);
-      if (overlaps && a.therapistId === b.therapistId) conflicts.push({ a, b, reason: "׳׳•׳×׳” ׳׳˜׳₪׳׳×" });
-      else if (overlaps) conflicts.push({ a, b, reason: "׳—׳₪׳™׳₪׳× ׳–׳׳" });
+      if (overlaps && a.therapistId === b.therapistId) conflicts.push({ a, b, reason: "אותה מטפלת" });
+      else if (overlaps) conflicts.push({ a, b, reason: "חפיפת זמן" });
     }
   }
   return conflicts;
@@ -1616,9 +1629,9 @@ function openForm(resource, id = null, defaults = {}) {
   const row = id ? state.data[resource].find((item) => item.id === id) : defaults;
   document.getElementById("modalRoot").innerHTML = html`
     <div class="modal"><form class="modal-card" id="entityForm">
-      <div class="modal-head"><h3>${id ? "׳¢׳¨׳™׳›׳×" : "׳”׳•׳¡׳₪׳×"} ${pageLabel(resource) || ""}</h3><button type="button" class="btn ghost" id="closeModal">׳¡׳’׳™׳¨׳”</button></div>
+      <div class="modal-head"><h3>${id ? "עריכת" : "הוספת"} ${pageLabel(resource) || ""}</h3><button type="button" class="btn ghost" id="closeModal">סגירה</button></div>
       <div class="modal-body">${formFieldsHe(resource, row || {})}</div>
-      <div class="modal-foot"><button class="btn">׳©׳׳™׳¨׳”</button><div id="formError" class="muted"></div></div>
+      <div class="modal-foot"><button class="btn">שמירה</button><div id="formError" class="muted"></div></div>
     </form></div>`;
   document.getElementById("closeModal").addEventListener("click", closeModal);
   const clientSearch = document.querySelector("[data-client-search]");
@@ -1784,9 +1797,9 @@ function platformClinicRow(tenant, he) {
   const reset = state.platformPasswordReset?.tenantId === Number(tenant.id) ? state.platformPasswordReset : null;
   return html`<div class="feature-row platform-tenant-row">
     <div>
-      <strong>${tenant.name}</strong>
-      <span>${tenant.slug} · ${tenant.billingEmail || "-"} · ${tenant.domains?.[0]?.domain || "-"}</span>
-      <small>${he ? "משתמשים" : "مستخدمون"}: ${tenant.users || 0} · ${he ? "לקוחות" : "عملاء"}: ${tenant.clients || 0} · ${he ? "תוכנית" : "الخطة"}: ${planNameLabel(tenant.subscriptionPlan || tenant.plan)}</small>
+      <strong>${escapeHtml(tenant.name)}</strong>
+      <span>${escapeHtml(tenant.slug)} · ${escapeHtml(tenant.billingEmail || "-")} · ${escapeHtml(tenant.domains?.[0]?.domain || "-")}</span>
+      <small>${he ? "משתמשים" : "مستخدمون"}: ${escapeHtml(tenant.users || 0)} · ${he ? "לקוחות" : "عملاء"}: ${escapeHtml(tenant.clients || 0)} · ${he ? "תוכנית" : "الخطة"}: ${escapeHtml(planNameLabel(tenant.subscriptionPlan || tenant.plan))}</small>
     </div>
     <form class="inline-form" data-platform-tenant-form="${tenant.id}">
       <select name="plan">
@@ -1803,7 +1816,7 @@ function platformClinicRow(tenant, he) {
       <strong>${he ? "איפוס סיסמת מנהל" : "تصفير كلمة مرور المدير"}</strong>
       <input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="${he ? "סיסמה חדשה" : "كلمة مرور جديدة"}" required>
       <button class="btn danger">${he ? "איפוס" : "تصفير"}</button>
-      ${reset ? `<span class="pill done">${he ? "עודכן" : "تم التحديث"}: ${reset.owner?.username || reset.owner?.email || ""}</span>` : ""}
+      ${reset ? `<span class="pill done">${he ? "עודכן" : "تم التحديث"}: ${escapeHtml(reset.owner?.username || reset.owner?.email || "")}</span>` : ""}
     </form>
   </div>`;
 }
@@ -1831,8 +1844,8 @@ function renderPlatformBilling() {
       <div class="stack-list">
         ${tenants.map((tenant) => html`<div class="feature-row platform-tenant-row">
           <div>
-            <strong>${tenant.name}</strong>
-            <span>${tenant.billingEmail || "-"} · ${he ? "חשבוניות" : "فواتير"}: ${tenant.invoices || 0}</span>
+            <strong>${escapeHtml(tenant.name)}</strong>
+            <span>${escapeHtml(tenant.billingEmail || "-")} · ${he ? "חשבוניות" : "فواتير"}: ${escapeHtml(tenant.invoices || 0)}</span>
             <small>${he ? "יתרה פתוחה" : "رصيد مفتوح"}: ${Number(tenant.openBalance || 0).toLocaleString()} · ${he ? "שולם" : "مدفوع"}: ${Number(tenant.paidRevenue || 0).toLocaleString()}</small>
           </div>
           ${platformTenantBillingPanel(tenant, he)}
@@ -1993,7 +2006,7 @@ async function renderAcceptInvitation(token, error = "") {
       <main class="login">
         <div class="login-card">
           <div class="brand"><img class="brand-logo" src="/logo.svg" alt="Clinova"><div><h1>Clinova</h1><div class="muted">Invitation</div></div></div>
-          <div class="alert">${err.message}</div>
+          <div class="alert">${escapeHtml(err.message)}</div>
           <button class="btn" type="button" id="backToLogin">Back to login</button>
         </div>
       </main>
@@ -2009,16 +2022,16 @@ async function renderAcceptInvitation(token, error = "") {
       <form class="login-card" id="acceptInviteForm">
         <div class="brand">
           <img class="brand-logo" src="/logo.svg" alt="Clinova">
-          <div><h1>Clinova</h1><div class="muted">${invitation.clinicName || ""}</div></div>
+          <div><h1>Clinova</h1><div class="muted">${escapeHtml(invitation.clinicName || "")}</div></div>
         </div>
-        ${error ? `<div class="alert">${error}</div>` : ""}
+        ${error ? `<div class="alert">${escapeHtml(error)}</div>` : ""}
         <div class="invite-summary">
-          <strong>${invitation.name}</strong>
-          <span>${invitation.email}</span>
-          <span>${roleLabel(invitation.role)}</span>
+          <strong>${escapeHtml(invitation.name)}</strong>
+          <span>${escapeHtml(invitation.email)}</span>
+          <span>${escapeHtml(roleLabel(invitation.role))}</span>
         </div>
-        <div class="field"><label>׳¡׳™׳¡׳׳” ׳—׳“׳©׳”</label><input name="password" type="password" minlength="8" autocomplete="new-password" required></div>
-        <button class="btn" style="width:100%">׳”׳₪׳¢׳׳× ׳”׳—׳©׳‘׳•׳</button>
+        <div class="field"><label>סיסמה חדשה</label><input name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+        <button class="btn" style="width:100%">הפעלת החשבון</button>
       </form>
     </main>
   `);
@@ -2043,16 +2056,16 @@ async function openClientProfile(id) {
   document.getElementById("modalRoot").innerHTML = html`
     <div class="modal">
       <div class="modal-card wide">
-        <div class="modal-head"><h3>׳×׳™׳§ ׳׳§׳•׳— - ${data.client ? `${data.client.fname} ${data.client.lname}` : ""}</h3><button type="button" class="btn ghost" id="closeModal">׳¡׳’׳™׳¨׳”</button></div>
+        <div class="modal-head"><h3>תיק לקוח - ${data.client ? `${data.client.fname} ${data.client.lname}` : ""}</h3><button type="button" class="btn ghost" id="closeModal">סגירה</button></div>
         <div class="modal-body client-profile">
-          <div class="card mini"><strong>׳˜׳׳₪׳•׳</strong><span>${data.client?.phone || "-"}</span></div>
-          <div class="card mini"><strong>׳׳™׳׳™׳™׳</strong><span>${data.client?.email || "-"}</span></div>
-          <div class="card mini"><strong>׳”׳¢׳¨׳•׳×</strong><span>${data.client?.notes || "-"}</span></div>
-          <div class="profile-section"><h4>׳”׳™׳¡׳˜׳•׳¨׳™׳™׳× ׳‘׳™׳§׳•׳¨׳™׳</h4>${appointmentTable(data.appointments || [], false)}</div>
+          <div class="card mini"><strong>טלפון</strong><span>${data.client?.phone || "-"}</span></div>
+          <div class="card mini"><strong>אימייל</strong><span>${data.client?.email || "-"}</span></div>
+          <div class="card mini"><strong>הערות</strong><span>${data.client?.notes || "-"}</span></div>
+          <div class="profile-section"><h4>היסטוריית ביקורים</h4>${appointmentTable(data.appointments || [], false)}</div>
           <div class="profile-section">
-            <h4>׳§׳‘׳¦׳™׳ ׳•׳×׳׳•׳ ׳•׳× ׳׳§׳•׳—</h4>
-            ${(data.files || []).map((file) => `<div class="file-row"><a href="${file.url}" target="_blank" rel="noopener">${file.name}</a><span>${file.notes || file.originalName || ""}</span><small>${file.size ? `${Math.round(file.size / 1024)}KB` : ""}</small>${canWrite ? `<button class="btn danger" data-delete-file="${file.id}" data-client="${id}">׳׳—׳™׳§׳”</button>` : ""}</div>`).join("") || `<p class="muted">׳׳™׳ ׳§׳‘׳¦׳™׳</p>`}
-            ${canWrite ? `<form id="clientFileForm" class="inline-form upload-form"><input name="name" placeholder="׳©׳ ׳”׳§׳•׳‘׳¥"><input name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><input name="notes" placeholder="׳”׳¢׳¨׳”"><button class="btn">׳”׳¢׳׳׳”</button></form><div class="muted upload-hint">JPG, PNG, WEBP, PDF ֲ· ׳¢׳“ 10MB</div>` : ""}
+            <h4>קבצים ותמונות לקוח</h4>
+            ${(data.files || []).map((file) => `<div class="file-row"><a href="${file.url}" target="_blank" rel="noopener">${file.name}</a><span>${file.notes || file.originalName || ""}</span><small>${file.size ? `${Math.round(file.size / 1024)}KB` : ""}</small>${canWrite ? `<button class="btn danger" data-delete-file="${file.id}" data-client="${id}">מחיקה</button>` : ""}</div>`).join("") || `<p class="muted">אין קבצים</p>`}
+            ${canWrite ? `<form id="clientFileForm" class="inline-form upload-form"><input name="name" placeholder="שם הקובץ"><input name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><input name="notes" placeholder="הערה"><button class="btn">העלאה</button></form><div class="muted upload-hint">JPG, PNG, WEBP, PDF · עד 10MB</div>` : ""}
           </div>
         </div>
       </div>
@@ -2072,30 +2085,32 @@ async function openClientProfile(id) {
 }
 
 function printReceipt(id) {
-  const a = state.data.appointments.find((item) => item.id === id);
-  if (!a) return;
-  const settings = state.data.settings || {};
+  const rawAppointment = state.data.appointments.find((item) => item.id === id);
+  if (!rawAppointment) return;
+  const a = Object.fromEntries(Object.entries(rawAppointment).map(([key, value]) => [key, escapeHtml(value)]));
+  const settings = Object.fromEntries(Object.entries(state.data.settings || {}).map(([key, value]) => [key, escapeAttribute(value)]));
   const paid = Number(a.paidAmount || 0);
   const total = Number(a.price || 0);
   const win = window.open("", "_blank", "width=720,height=820");
-  win.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>׳§׳‘׳׳”</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#102220}.receipt{max-width:560px;margin:auto;border:1px solid #d8e6e1;border-radius:12px;padding:28px}img{width:70px}.row{display:flex;justify-content:space-between;border-bottom:1px solid #eef3f1;padding:10px 0}.total{font-size:20px;font-weight:700}</style></head><body><div class="receipt"><img src="${settings.logoUrl || "/logo.svg"}"><h1>${settings.clinicName || "Clinova"}</h1><h2>׳—׳©׳‘׳•׳ ׳™׳× / ׳§׳‘׳׳”</h2><div class="row"><span>׳׳§׳•׳—</span><strong>${a.clientName}</strong></div><div class="row"><span>׳©׳™׳¨׳•׳×</span><strong>${a.serviceName}</strong></div><div class="row"><span>׳×׳׳¨׳™׳</span><strong>${a.date} ${a.time}</strong></div><div class="row"><span>׳׳¦׳‘ ׳×׳©׳׳•׳</span><strong>${paymentLabel[a.paymentStatus || "unpaid"]}</strong></div><div class="row total"><span>׳¡׳”׳´׳›</span><strong>${currency()}${total.toLocaleString()}</strong></div><div class="row"><span>׳©׳•׳׳</span><strong>${currency()}${paid.toLocaleString()}</strong></div><div class="row"><span>׳™׳×׳¨׳”</span><strong>${currency()}${Math.max(total - paid, 0).toLocaleString()}</strong></div></div><script>print();</script></body></html>`);
+  win.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>קבלה</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#102220}.receipt{max-width:560px;margin:auto;border:1px solid #d8e6e1;border-radius:12px;padding:28px}img{width:70px}.row{display:flex;justify-content:space-between;border-bottom:1px solid #eef3f1;padding:10px 0}.total{font-size:20px;font-weight:700}</style></head><body><div class="receipt"><img src="${settings.logoUrl || "/logo.svg"}"><h1>${settings.clinicName || "Clinova"}</h1><h2>חשבונית / קבלה</h2><div class="row"><span>לקוח</span><strong>${a.clientName}</strong></div><div class="row"><span>שירות</span><strong>${a.serviceName}</strong></div><div class="row"><span>תאריך</span><strong>${a.date} ${a.time}</strong></div><div class="row"><span>מצב תשלום</span><strong>${paymentLabel[a.paymentStatus || "unpaid"]}</strong></div><div class="row total"><span>סה״כ</span><strong>${currency()}${total.toLocaleString()}</strong></div><div class="row"><span>שולם</span><strong>${currency()}${paid.toLocaleString()}</strong></div><div class="row"><span>יתרה</span><strong>${currency()}${Math.max(total - paid, 0).toLocaleString()}</strong></div></div><script>print();</script></body></html>`);
   win.document.close();
 }
 
 function printGift(id) {
-  const gift = (state.data.giftCards || []).find((item) => item.id === id);
-  if (!gift) return;
-  const settings = state.data.settings || {};
+  const rawGift = (state.data.giftCards || []).find((item) => item.id === id);
+  if (!rawGift) return;
+  const gift = Object.fromEntries(Object.entries(rawGift).map(([key, value]) => [key, escapeHtml(value)]));
+  const settings = Object.fromEntries(Object.entries(state.data.settings || {}).map(([key, value]) => [key, escapeAttribute(value)]));
   const win = window.open("", "_blank", "width=720,height=820");
-  win.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>Gift</title><style>body{font-family:Arial,sans-serif;background:#f6faf8;padding:30px}.gift{max-width:520px;margin:auto;border:1px solid #d8e6e1;border-radius:18px;background:white;padding:34px;text-align:center;box-shadow:0 18px 50px rgba(45,106,79,.18)}h1{color:#2d6a4f}.code{font-size:22px;letter-spacing:2px;border:1px dashed #2d6a4f;border-radius:12px;padding:14px;margin:18px 0}</style></head><body><div class="gift"><img src="${settings.logoUrl || "/logo.svg"}" width="76"><h1>${settings.clinicName || "Clinova"}</h1><h2>׳›׳¨׳˜׳™׳¡ ׳׳×׳ ׳”</h2><p>${gift.toClientName || ""}</p><h3>${gift.serviceName || ""}</h3><strong>${gift.sessions || 1} ׳׳₪׳’׳©׳™׳</strong><div class="code">${gift.code}</div><p>${gift.message || ""}</p></div><script>print();</script></body></html>`);
+  win.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>Gift</title><style>body{font-family:Arial,sans-serif;background:#f6faf8;padding:30px}.gift{max-width:520px;margin:auto;border:1px solid #d8e6e1;border-radius:18px;background:white;padding:34px;text-align:center;box-shadow:0 18px 50px rgba(45,106,79,.18)}h1{color:#2d6a4f}.code{font-size:22px;letter-spacing:2px;border:1px dashed #2d6a4f;border-radius:12px;padding:14px;margin:18px 0}</style></head><body><div class="gift"><img src="${settings.logoUrl || "/logo.svg"}" width="76"><h1>${settings.clinicName || "Clinova"}</h1><h2>כרטיס מתנה</h2><p>${gift.toClientName || ""}</p><h3>${gift.serviceName || ""}</h3><strong>${gift.sessions || 1} מפגשים</strong><div class="code">${gift.code}</div><p>${gift.message || ""}</p></div><script>print();</script></body></html>`);
   win.document.close();
 }
 
 function workDaysPicker(value) {
   const selected = new Set(selectedWorkDays(value || "[0,1,2,3,4,5]"));
   const days = state.lang === "he"
-    ? [["0", "׳¨׳׳©׳•׳"], ["1", "׳©׳ ׳™"], ["2", "׳©׳׳™׳©׳™"], ["3", "׳¨׳‘׳™׳¢׳™"], ["4", "׳—׳׳™׳©׳™"], ["5", "׳©׳™׳©׳™"], ["6", "׳©׳‘׳×"]]
-    : [["0", "״§„״£״­״¯"], ["1", "״§„״¥״«††"], ["2", "״§„״«„״§״«״§״¡"], ["3", "״§„״£״±״¨״¹״§״¡"], ["4", "״§„״®…״³"], ["5", "״§„״¬…״¹״©"], ["6", "״§„״³״¨״×"]];
+    ? [["0", "ראשון"], ["1", "שני"], ["2", "שלישי"], ["3", "רביעי"], ["4", "חמישי"], ["5", "שישי"], ["6", "שבת"]]
+    : [["0", "الأحد"], ["1", "الإثنين"], ["2", "الثلاثاء"], ["3", "الأربعاء"], ["4", "الخميس"], ["5", "الجمعة"], ["6", "السبت"]];
   return `<div class="work-days">${days.map(([id, label]) => `<label><input type="checkbox" name="workDay" value="${id}" ${selected.has(Number(id)) ? "checked" : ""}> <span>${label}</span></label>`).join("")}</div>`;
 }
 
@@ -2268,7 +2283,7 @@ topActionI18n = function () {
 }
 
 function cleanTable(heads, rows, mapRow, actions = "") {
-  return html`<div class="table-wrap responsive-table"><table><thead><tr>${heads.map((head) => `<th>${head}</th>`).join("")}${actions ? `<th>${clean("actions")}</th>` : ""}</tr></thead><tbody>${rows.length ? rows.map((row) => `<tr>${mapRow(row).map((cell, index) => `<td data-label="${escapeAttr(heads[index] || "")}">${cell ?? ""}</td>`).join("")}${actions ? actions(row) : ""}</tr>`).join("") : `<tr><td colspan="${heads.length + (actions ? 1 : 0)}" class="muted">${clean("noData")}</td></tr>`}</tbody></table></div>`;
+  return html`<div class="table-wrap responsive-table"><table><thead><tr>${heads.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}${actions ? `<th>${escapeHtml(clean("actions"))}</th>` : ""}</tr></thead><tbody>${rows.length ? rows.map((row) => `<tr>${mapRow(row).map((cell, index) => `<td data-label="${escapeAttr(heads[index] || "")}">${renderText(cell)}</td>`).join("")}${actions ? actions(row) : ""}</tr>`).join("") : `<tr><td colspan="${heads.length + (actions ? 1 : 0)}" class="muted">${escapeHtml(clean("noData"))}</td></tr>`}</tbody></table></div>`;
 }
 
 renderDashboardHe = function () {
@@ -2376,9 +2391,10 @@ function calendarHours() {
 }
 
 function calendarAppointmentChip(appointment) {
-  return `<button type="button" class="calendar-event ${appointment.status || "pending"}" data-edit="appointments" data-id="${appointment.id}">
-    <strong>${appointment.time || ""} ${appointment.clientName || "-"}</strong>
-    <span>${appointment.serviceName || ""}</span>
+  const statusClass = ["pending", "done", "cancelled"].includes(appointment.status) ? appointment.status : "pending";
+  return `<button type="button" class="calendar-event ${statusClass}" data-edit="appointments" data-id="${escapeAttr(appointment.id)}">
+    <strong>${escapeHtml(appointment.time || "")} ${escapeHtml(appointment.clientName || "-")}</strong>
+    <span>${escapeHtml(appointment.serviceName || "")}</span>
   </button>`;
 }
 
@@ -2402,7 +2418,7 @@ function renderWeekCalendar(days, therapists, he) {
   return html`<div class="calendar-week">
     <div class="calendar-corner">${he ? "צוות" : "الفريق"}</div>
     ${days.map((date) => `<div class="calendar-weekday strong">${date.toLocaleDateString(he ? "he-IL" : "ar", { weekday: "short", day: "numeric" })}</div>`).join("")}
-    ${therapists.map((user) => `<div class="calendar-resource"><strong>${user.name || user.username}</strong><span>${roleLabel(user.role)}</span></div>
+    ${therapists.map((user) => `<div class="calendar-resource"><strong>${escapeHtml(user.name || user.username)}</strong><span>${escapeHtml(roleLabel(user.role))}</span></div>
       ${days.map((date) => {
         const dateText = isoDate(date);
         const rows = appointmentsFor(dateText, user.id);
@@ -2418,7 +2434,7 @@ function renderDayCalendar(days, therapists, he) {
   const hours = calendarHours();
   return html`<div class="calendar-day-board">
     <div class="calendar-corner">${he ? "שעה" : "الوقت"}</div>
-    ${therapists.map((user) => `<div class="calendar-resource header"><strong>${user.name || user.username}</strong><span>${roleLabel(user.role)}</span></div>`).join("")}
+    ${therapists.map((user) => `<div class="calendar-resource header"><strong>${escapeHtml(user.name || user.username)}</strong><span>${escapeHtml(roleLabel(user.role))}</span></div>`).join("")}
     ${hours.map((time) => `<div class="calendar-hour">${time}</div>
       ${therapists.map((user) => {
         const rows = appointmentsFor(dateText, user.id).filter((appointment) => String(appointment.time || "").slice(0, 2) === time.slice(0, 2));
@@ -2456,7 +2472,7 @@ renderCalendarHe = function () {
       <strong>${calendarRangeTitle()}</strong>
     </div>
     <div class="calendar-legend">
-      ${therapists.map((user) => `<span><strong>${user.name || user.username}</strong> ${roleLabel(user.role)}</span>`).join("")}
+      ${therapists.map((user) => `<span><strong>${escapeHtml(user.name || user.username)}</strong> ${escapeHtml(roleLabel(user.role))}</span>`).join("")}
     </div>
     <div class="card calendar-card">
       ${state.calendarView === "month" ? renderMonthCalendar(days, he) : state.calendarView === "day" ? renderDayCalendar(days, therapists, he) : renderWeekCalendar(days, therapists, he)}
@@ -2530,14 +2546,14 @@ renderBilling = function () {
 function field(name, label, value = "", type = "text", required = true, extraClass = "") {
   const safeValue = escapeAttr(value ?? "");
   if (type === "textarea") {
-    return `<div class="field ${extraClass}"><label>${label}</label><textarea name="${name}" ${required ? "required" : ""}>${safeValue}</textarea></div>`;
+    return `<div class="field ${escapeAttr(extraClass)}"><label>${escapeHtml(label)}</label><textarea name="${escapeAttr(name)}" ${required ? "required" : ""}>${safeValue}</textarea></div>`;
   }
-  return `<div class="field ${extraClass}"><label>${label}</label><input name="${name}" type="${type}" value="${safeValue}" ${required ? "required" : ""}></div>`;
+  return `<div class="field ${escapeAttr(extraClass)}"><label>${escapeHtml(label)}</label><input name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${safeValue}" ${required ? "required" : ""}></div>`;
 }
 
 function select(name, label, options = [], value = "", required = true) {
   const current = String(value ?? "");
-  return `<div class="field"><label>${label}</label><select name="${name}" ${required ? "required" : ""}>${options.map(([id, text]) => `<option value="${escapeAttr(id)}" ${String(id) === current ? "selected" : ""}>${text}</option>`).join("")}</select></div>`;
+  return `<div class="field"><label>${escapeHtml(label)}</label><select name="${escapeAttr(name)}" ${required ? "required" : ""}>${options.map(([id, text]) => `<option value="${escapeAttr(id)}" ${String(id) === current ? "selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select></div>`;
 }
 
 openForm = function (resource, id = null, defaults = {}) {
@@ -2579,9 +2595,10 @@ formFieldsHe = function (resource, row = {}) {
 renderApp = function () {
   const nav = state.user.platformOwner ? ["platform", "platformBilling", "platformReports", "platformHealth"] : (navByRole[state.user.role] || []);
   if (!nav.includes(state.page)) state.page = nav[0] || "dashboard";
+  const safeUserName = escapeHtml(state.user.name);
   document.documentElement.lang = state.lang;
   document.documentElement.dir = "rtl";
-  mount(html`<div class="shell"><aside class="sidebar"><div class="brand"><img class="brand-logo" src="${logoSrc()}" alt="Clinova"><div><h3>Clinova</h3><div style="opacity:.75;font-size:12px">${state.user.platformOwner ? clean("platformSystem") : clean("system")}</div><div class="app-version">v${APP_VERSION}</div></div></div><nav class="nav">${nav.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}">${pageLabel(page)}</button>`).join("")}</nav><div class="user-box"><strong>${state.user.name}</strong><span style="opacity:.75">${roleLabel(state.user.role)}</span><button class="btn ghost" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,.35)">${clean("logout")}</button></div></aside><main class="main"><header class="topbar"><div><h2>${pageLabel(state.page)}</h2><div class="muted page-subtitle">${pageSubtitle()}</div></div><div class="topbar-actions">${languagePicker()}${renderQuickSearchLive()}${topActionI18n()}</div></header><section class="content">${renderPage()}</section></main></div><div id="modalRoot"></div>`);
+  mount(html`<div class="shell"><aside class="sidebar"><div class="brand"><img class="brand-logo" src="${escapeAttr(logoSrc())}" alt="Clinova"><div><h3>Clinova</h3><div style="opacity:.75;font-size:12px">${state.user.platformOwner ? clean("platformSystem") : clean("system")}</div><div class="app-version">v${escapeHtml(APP_VERSION)}</div></div></div><nav class="nav">${nav.map((page) => `<button data-page="${escapeAttr(page)}" class="${state.page === page ? "active" : ""}">${escapeHtml(pageLabel(page))}</button>`).join("")}</nav><div class="user-box"><strong>${safeUserName}</strong><span style="opacity:.75">${escapeHtml(roleLabel(state.user.role))}</span><button class="btn ghost" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,.35)">${clean("logout")}</button></div></aside><main class="main"><header class="topbar"><div><h2>${escapeHtml(pageLabel(state.page))}</h2><div class="muted page-subtitle">${escapeHtml(pageSubtitle())}</div></div><div class="topbar-actions">${languagePicker()}${renderQuickSearchLive()}${topActionI18n()}</div></header><section class="content">${renderPage()}</section></main></div><div id="modalRoot"></div>`);
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST" });
     state.user = null;
@@ -2594,7 +2611,7 @@ renderLogin = function (error = "") {
   const he = state.lang === "he";
   document.documentElement.lang = state.lang;
   document.documentElement.dir = "rtl";
-  mount(html`<main class="login"><form class="login-card" id="loginForm"><div class="brand"><img class="brand-logo" src="/logo.svg" alt="Clinova"><div><h1>Clinova</h1><div class="muted">${he ? "מערכת ניהול קליניקה" : "نظام إدارة العيادة"}</div></div></div>${error ? `<div class="alert">${error}</div>` : ""}<div class="field"><label>${he ? "שם משתמש" : "اسم المستخدم"}</label><input name="username" autocomplete="username" required></div><div class="field"><label>${he ? "סיסמה" : "كلمة المرور"}</label><input name="password" type="password" autocomplete="current-password" required></div><button class="btn" style="width:100%">${he ? "כניסה" : "دخول"}</button><div class="version-badge">v${APP_VERSION}</div></form></main>`);
+  mount(html`<main class="login"><form class="login-card" id="loginForm"><div class="brand"><img class="brand-logo" src="/logo.svg" alt="Clinova"><div><h1>Clinova</h1><div class="muted">${he ? "מערכת ניהול קליניקה" : "نظام إدارة العيادة"}</div></div></div>${error ? `<div class="alert">${escapeHtml(error)}</div>` : ""}<div class="field"><label>${he ? "שם משתמש" : "اسم المستخدم"}</label><input name="username" autocomplete="username" required></div><div class="field"><label>${he ? "סיסמה" : "كلمة المرور"}</label><input name="password" type="password" autocomplete="current-password" required></div><button class="btn" style="width:100%">${he ? "כניסה" : "دخول"}</button><div class="version-badge">v${escapeHtml(APP_VERSION)}</div></form></main>`);
   document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -2613,7 +2630,7 @@ function uiText(ar, he) {
 }
 
 function optionList(rows, valueKey, labelFn, selected = "") {
-  return rows.map((row) => `<option value="${escapeAttr(row[valueKey])}" ${String(row[valueKey]) === String(selected) ? "selected" : ""}>${labelFn(row)}</option>`).join("");
+  return rows.map((row) => `<option value="${escapeAttr(row[valueKey])}" ${String(row[valueKey]) === String(selected) ? "selected" : ""}>${escapeHtml(labelFn(row))}</option>`).join("");
 }
 
 function reloadAfter(action) {
@@ -2814,8 +2831,9 @@ function openGiftModal() {
 }
 
 function printGiftCard(id) {
-  const gift = (state.data.giftCards || []).find((item) => Number(item.id) === Number(id));
-  if (!gift) return;
+  const rawGift = (state.data.giftCards || []).find((item) => Number(item.id) === Number(id));
+  if (!rawGift) return;
+  const gift = Object.fromEntries(Object.entries(rawGift).map(([key, value]) => [key, escapeHtml(value)]));
   const win = window.open("", "_blank");
   win.document.write(`<html dir="rtl"><head><title>${gift.code}</title><style>body{font-family:Arial;padding:40px}.card{border:2px solid #111;padding:32px;border-radius:12px;text-align:center}code{font-size:24px}</style></head><body><div class="card"><h1>Clinova</h1><h2>${uiText("كرت هدية", "כרטיס מתנה")}</h2><p>${gift.serviceName || ""}</p><p>${gift.sessions || 1}</p><code>${gift.code}</code></div><script>print()</script></body></html>`);
   win.document.close();
@@ -2859,9 +2877,9 @@ async function handleQuickSearch(event) {
     const appointments = result.appointments || [];
     const services = result.services || [];
     panel.innerHTML = html`
-      ${clients.length ? `<strong>${pageLabel("clients")}</strong>${clients.map((client) => `<button type="button" data-quick-profile="${client.id}">${client.fname || ""} ${client.lname || ""}<small>${client.phone || ""}</small></button>`).join("")}` : ""}
-      ${appointments.length ? `<strong>${pageLabel("appointments")}</strong>${appointments.map((item) => `<button type="button" data-quick-appointment="${item.id}">${item.clientName || ""}<small>${item.date || ""} ${item.time || ""}</small></button>`).join("")}` : ""}
-      ${services.length ? `<strong>${pageLabel("services")}</strong>${services.map((service) => `<button type="button" data-page="services">${service.name || ""}<small>${currency()}${service.price || 0}</small></button>`).join("")}` : ""}
+      ${clients.length ? `<strong>${escapeHtml(pageLabel("clients"))}</strong>${clients.map((client) => `<button type="button" data-quick-profile="${escapeAttr(client.id)}">${escapeHtml(client.fname || "")} ${escapeHtml(client.lname || "")}<small>${escapeHtml(client.phone || "")}</small></button>`).join("")}` : ""}
+      ${appointments.length ? `<strong>${escapeHtml(pageLabel("appointments"))}</strong>${appointments.map((item) => `<button type="button" data-quick-appointment="${escapeAttr(item.id)}">${escapeHtml(item.clientName || "")}<small>${escapeHtml(item.date || "")} ${escapeHtml(item.time || "")}</small></button>`).join("")}` : ""}
+      ${services.length ? `<strong>${escapeHtml(pageLabel("services"))}</strong>${services.map((service) => `<button type="button" data-page="services">${escapeHtml(service.name || "")}<small>${escapeHtml(currency())}${escapeHtml(service.price || 0)}</small></button>`).join("")}` : ""}
       ${!clients.length && !appointments.length && !services.length ? `<span class="muted">${clean("noData")}</span>` : ""}
     `;
     panel.classList.remove("hidden");
@@ -2872,7 +2890,11 @@ async function handleQuickSearch(event) {
       renderApp();
     }));
   } catch (err) {
-    panel.innerHTML = `<span class="muted">${localizedError(err)}</span>`;
+    panel.replaceChildren();
+    const message = document.createElement("span");
+    message.className = "muted";
+    message.textContent = localizedError(err);
+    panel.append(message);
     panel.classList.remove("hidden");
   }
 }
@@ -2910,7 +2932,7 @@ function openConsentSignModal(templateId, defaults = {}) {
   if (!selectedTemplate) return showCenterError(uiText("لا توجد نماذج إقرار", "אין טפסים משפטיים"));
   document.getElementById("modalRoot").innerHTML = html`
     <div class="modal"><form class="modal-card wide" id="consentSignForm">
-      <div class="modal-head"><h3>${uiText("توقيع إقرار", "חתימת טופס")} - ${selectedTemplate.title}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
+      <div class="modal-head"><h3>${uiText("توقيع إقرار", "חתימת טופס")} - ${escapeHtml(selectedTemplate.title)}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
       <div class="modal-body">
         ${select("templateId", uiText("النموذج", "טופס"), templates.map((item) => [item.id, item.title]), selectedTemplate.id)}
         ${lockedAppointment ? `
@@ -2998,7 +3020,7 @@ function stageLabel(stage) {
 }
 
 function statusPill(status) {
-  return `<span class="pill ${status === "done" || status === "submitted" || status === "active" || status === "sent" || status === "dry_run" ? "done" : status === "cancelled" || status === "failed" || status === "redeemed" ? "cancelled" : "pending"}">${cleanStatusLabel(status) === status ? status : cleanStatusLabel(status)}</span>`;
+  return `<span class="pill ${status === "done" || status === "submitted" || status === "active" || status === "sent" || status === "dry_run" ? "done" : status === "cancelled" || status === "failed" || status === "redeemed" ? "cancelled" : "pending"}">${escapeHtml(cleanStatusLabel(status) === status ? status : cleanStatusLabel(status))}</span>`;
 }
 
 renderTeamUsers = function () {
@@ -3022,7 +3044,7 @@ renderTeamUsers = function () {
       <div class="card">
         <h3>${uiText("الدعوات المفتوحة", "הזמנות פתוחות")}</h3>
         <div class="stack-list">
-          ${pending.map((invite) => `<div class="feature-row"><div><strong>${invite.name}</strong><span>${invite.email} · ${roleLabel(invite.role)}</span><small>${invite.inviteUrl || ""}</small></div><div class="actions"><button class="btn secondary" data-copy-invite="${escapeAttr(invite.inviteUrl || "")}">${uiText("نسخ", "העתקה")}</button><button class="btn danger" data-revoke-invite="${invite.id}">${uiText("إلغاء", "ביטול")}</button></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}
+          ${pending.map((invite) => `<div class="feature-row"><div><strong>${escapeHtml(invite.name)}</strong><span>${escapeHtml(invite.email)} · ${escapeHtml(roleLabel(invite.role))}</span><small>${escapeHtml(invite.inviteUrl || "")}</small></div><div class="actions"><button class="btn secondary" data-copy-invite="${escapeAttr(invite.inviteUrl || "")}">${uiText("نسخ", "העתקה")}</button><button class="btn danger" data-revoke-invite="${escapeAttr(invite.id)}">${uiText("إلغاء", "ביטול")}</button></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}
         </div>
       </div>
     </div>
@@ -3057,13 +3079,13 @@ renderCrm = function () {
       </div>
       <div class="card">
         <h3>${uiText("آخر أحداث CRM", "אירועי CRM אחרונים")}</h3>
-        <div class="stack-list">${events.slice(0, 8).map((event) => `<div class="feature-row"><div><strong>${event.clientName || "-"}</strong><span>${event.type || ""} · ${event.createdAt || ""}</span><small>${event.description || ""}</small></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${events.slice(0, 8).map((event) => `<div class="feature-row"><div><strong>${escapeHtml(event.clientName || "-")}</strong><span>${escapeHtml(event.type || "")} · ${escapeHtml(event.createdAt || "")}</span><small>${escapeHtml(event.description || "")}</small></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
     </div>
     <div class="kanban-grid">
-      ${stages.map((stage) => `<div class="card"><h3>${stageLabel(stage)}</h3><div class="stack-list">${clients.filter((c) => (c.stage || "lead") === stage).map((client) => `<div class="feature-row"><div><strong>${client.fname} ${client.lname}</strong><span>${client.phone || ""}</span><small>${client.notes || ""}</small></div><button class="btn secondary" data-profile="${client.id}">${uiText("ملف", "תיק")}</button></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>`).join("")}
+      ${stages.map((stage) => `<div class="card"><h3>${escapeHtml(stageLabel(stage))}</h3><div class="stack-list">${clients.filter((c) => (c.stage || "lead") === stage).map((client) => `<div class="feature-row"><div><strong>${escapeHtml(client.fname)} ${escapeHtml(client.lname)}</strong><span>${escapeHtml(client.phone || "")}</span><small>${escapeHtml(client.notes || "")}</small></div><button class="btn secondary" data-profile="${escapeAttr(client.id)}">${uiText("ملف", "תיק")}</button></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>`).join("")}
     </div>
-    <div class="card"><h3>${uiText("مهام المتابعة", "משימות מעקב")}</h3><div class="stack-list">${tasks.map((task) => `<div class="feature-row"><div><strong>${task.title}</strong><span>${task.clientName || "-"} · ${task.dueDate || "-"}</span><small>${task.notes || ""}</small></div><div class="actions">${statusPill(task.status || "open")}${(task.status || "open") !== "done" ? `<button class="btn secondary" data-crm-task-done="${task.id}">✓</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>
+    <div class="card"><h3>${uiText("مهام المتابعة", "משימות מעקב")}</h3><div class="stack-list">${tasks.map((task) => `<div class="feature-row"><div><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.clientName || "-")} · ${escapeHtml(task.dueDate || "-")}</span><small>${escapeHtml(task.notes || "")}</small></div><div class="actions">${statusPill(task.status || "open")}${(task.status || "open") !== "done" ? `<button class="btn secondary" data-crm-task-done="${escapeAttr(task.id)}">✓</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>
   `;
 }
 
@@ -3086,7 +3108,7 @@ renderWhatsApp = function () {
       </div>
       <div class="card">
         <h3>${uiText("سجل رسائل WhatsApp", "יומן הודעות WhatsApp")}</h3>
-        <div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${log.recipient || "-"}</strong><span>${log.entity || ""} #${log.entityId || ""} · ${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>${statusPill(log.status || "open")}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${escapeHtml(log.recipient || "-")}</strong><span>${escapeHtml(log.entity || "")} #${escapeHtml(log.entityId || "")} · ${escapeHtml(log.createdAt || "")}</span><small>${escapeHtml(log.error || log.message || "")}</small></div>${statusPill(log.status || "open")}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
     </div>
   `;
@@ -3098,10 +3120,10 @@ renderConsents = function () {
   return html`
     <div class="feature-grid">
       <div class="card"><h3>${uiText("نماذج PDF حسب القسم", "טפסי PDF לפי קטגוריה")}</h3>
-        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span><small>${t.originalName || ""}</small></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${escapeHtml(t.title)}</strong><span>${escapeHtml(t.categoryName || "-")}</span><small>${escapeHtml(t.originalName || "")}</small></div><div class="actions"><a class="btn secondary" href="${escapeAttr(t.url)}" target="_blank" rel="noopener">PDF</a>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${escapeAttr(t.id)}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
       <div class="card"><h3>${uiText("آخر التواقيع", "חתימות אחרונות")}</h3>
-        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${s.clientName || s.signerName || "-"}</strong><span>${s.templateTitle || ""} · ${s.signedAt || ""}</span></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${escapeHtml(s.clientName || s.signerName || "-")}</strong><span>${escapeHtml(s.templateTitle || "")} · ${escapeHtml(s.signedAt || "")}</span></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
     </div>
   `;
@@ -3113,9 +3135,9 @@ renderFeedback = function () {
   return html`
     <div class="feature-grid">
       <div class="card"><h3>${uiText("طلبات التقييم", "בקשות משוב")}</h3>
-        <div class="stack-list">${rows.map((r) => `<div class="feature-row"><div><strong>${r.clientName || "-"}</strong><span>${r.serviceName || ""} · ${r.date || ""} ${r.time || ""}</span>${r.comment ? `<small>${r.comment}</small>` : ""}</div><div>${statusPill(r.status || "sent")} ${r.rating ? `<strong>${r.rating}/5</strong>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${rows.map((r) => `<div class="feature-row"><div><strong>${escapeHtml(r.clientName || "-")}</strong><span>${escapeHtml(r.serviceName || "")} · ${escapeHtml(r.date || "")} ${escapeHtml(r.time || "")}</span>${r.comment ? `<small>${escapeHtml(r.comment)}</small>` : ""}</div><div>${statusPill(r.status || "sent")} ${r.rating ? `<strong>${escapeHtml(r.rating)}/5</strong>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
-      <div class="card"><h3>${uiText("رسائل التقييم", "הודעות משוב")}</h3><div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${log.recipient || "-"}</strong><span>${log.createdAt || ""}</span><small>${log.error || log.message || ""}</small></div>${statusPill(log.status || "open")}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>
+      <div class="card"><h3>${uiText("رسائل التقييم", "הודעות משוב")}</h3><div class="stack-list">${logs.map((log) => `<div class="feature-row"><div><strong>${escapeHtml(log.recipient || "-")}</strong><span>${escapeHtml(log.createdAt || "")}</span><small>${escapeHtml(log.error || log.message || "")}</small></div>${statusPill(log.status || "open")}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></div>
     </div>
   `;
 }
@@ -3125,11 +3147,11 @@ renderGifts = function () {
   return html`
     <div class="gift-board">${rows.map((g) => `<div class="gift-card">
       <div class="gift-ribbon">${uiText("هدية", "מתנה")}</div>
-      <h3>${g.serviceName || uiText("جلسة في العيادة", "שירות בקליניקה")}</h3>
-      <p>${g.toClientName || ""}</p>
+      <h3>${escapeHtml(g.serviceName || uiText("جلسة في العيادة", "שירות בקליניקה"))}</h3>
+      <p>${escapeHtml(g.toClientName || "")}</p>
       <strong>${g.sessions || 1} ${uiText("جلسة", "מפגשים")}</strong>
-      <code>${g.code}</code>
-      <div class="actions"><span class="pill">${g.status || "active"}</span><button class="btn secondary" data-gift-whatsapp="${g.id}">WhatsApp</button><button class="btn secondary" data-gift-print="${g.id}">${uiText("طباعة", "הדפסה")}</button>${g.status !== "redeemed" ? `<button class="btn secondary" data-gift-status="${g.id}" data-status="redeemed">${uiText("استخدام", "מימוש")}</button>` : ""}</div>
+      <code>${escapeHtml(g.code)}</code>
+      <div class="actions"><span class="pill">${escapeHtml(g.status || "active")}</span><button class="btn secondary" data-gift-whatsapp="${escapeAttr(g.id)}">WhatsApp</button><button class="btn secondary" data-gift-print="${escapeAttr(g.id)}">${uiText("طباعة", "הדפסה")}</button>${g.status !== "redeemed" ? `<button class="btn secondary" data-gift-status="${escapeAttr(g.id)}" data-status="redeemed">${uiText("استخدام", "מימוש")}</button>` : ""}</div>
     </div>`).join("") || `<div class="card"><p class="muted">${clean("noData")}</p></div>`}</div>
   `;
 }
@@ -3167,7 +3189,7 @@ renderSettingsClean = function (message = "") {
   const s = state.data.settings || {};
   return html`
     <div class="settings-grid">
-      ${state.user.role === "admin" ? `<div class="card"><h3>${uiText("إعدادات العيادة", "הגדרות קליניקה")}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="clinicSettingsForm">
+      ${state.user.role === "admin" ? `<div class="card"><h3>${uiText("إعدادات العيادة", "הגדרות קליניקה")}</h3>${message ? `<div class="alert">${escapeHtml(message)}</div>` : ""}<form id="clinicSettingsForm">
         ${field("clinicName", uiText("اسم العيادة", "שם הקליניקה"), s.clinicName || "Clinova")}
         ${field("currency", uiText("العملة", "מטבע"), s.currency || "₪")}
         ${field("workStart", uiText("بداية الدوام", "תחילת יום עבודה"), s.workStart || "09:00", "time")}
@@ -3216,10 +3238,10 @@ renderConsents = function () {
   return html`
     <div class="feature-grid">
       <div class="card"><h3>${uiText("نماذج PDF حسب القسم", "טפסי PDF לפי קטגוריה")}</h3>
-        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span><small>${t.originalName || ""}</small></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${t.id}">${uiText("توقيع", "חתימה")}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${escapeHtml(t.title)}</strong><span>${escapeHtml(t.categoryName || "-")}</span><small>${escapeHtml(t.originalName || "")}</small></div><div class="actions"><a class="btn secondary" href="${escapeAttr(t.url)}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${escapeAttr(t.id)}">${uiText("توقيع", "חתימה")}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${escapeAttr(t.id)}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
       <div class="card"><h3>${uiText("آخر التواقيع", "חתימות אחרונות")}</h3>
-        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${s.clientName || s.signerName || "-"}</strong><span>${s.templateTitle || ""} · ${s.signedAt || ""}</span></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${escapeHtml(s.clientName || s.signerName || "-")}</strong><span>${escapeHtml(s.templateTitle || "")} · ${escapeHtml(s.signedAt || "")}</span></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
     </div>
   `;
@@ -3247,14 +3269,14 @@ openClientProfile = async function (id) {
       <div class="modal">
         <div class="modal-card wide">
           <div class="modal-head">
-            <h3>${uiText("ملف العميل", "תיק לקוח")} - ${client.fname || ""} ${client.lname || ""}</h3>
+            <h3>${uiText("ملف العميل", "תיק לקוח")} - ${escapeHtml(client.fname || "")} ${escapeHtml(client.lname || "")}</h3>
             <button type="button" class="btn ghost" id="closeModal">${clean("close")}</button>
           </div>
           <div class="modal-body client-profile">
-            <div class="card mini"><strong>${uiText("الهاتف", "טלפון")}</strong><span>${client.phone || "-"}</span></div>
-            <div class="card mini"><strong>${uiText("البريد", "אימייל")}</strong><span>${client.email || "-"}</span></div>
-            <div class="card mini"><strong>${uiText("المرحلة", "שלב")}</strong><span>${stageLabel(client.stage)}</span></div>
-            <div class="card mini"><strong>${uiText("ملاحظات", "הערות")}</strong><span>${client.notes || "-"}</span></div>
+            <div class="card mini"><strong>${uiText("الهاتف", "טלפון")}</strong><span>${escapeHtml(client.phone || "-")}</span></div>
+            <div class="card mini"><strong>${uiText("البريد", "אימייל")}</strong><span>${escapeHtml(client.email || "-")}</span></div>
+            <div class="card mini"><strong>${uiText("المرحلة", "שלב")}</strong><span>${escapeHtml(stageLabel(client.stage))}</span></div>
+            <div class="card mini"><strong>${uiText("ملاحظات", "הערות")}</strong><span class="pre-wrap">${escapeHtml(client.notes || "-")}</span></div>
             <div class="profile-section full">
               <h4>${uiText("سجل المواعيد", "היסטוריית תורים")}</h4>
               ${appointmentTableClean(data.appointments || [], false)}
@@ -3262,7 +3284,7 @@ openClientProfile = async function (id) {
             <div class="profile-section full">
               <h4>${uiText("ملفات ومستندات العميل", "קבצים ומסמכי לקוח")}</h4>
               <div class="stack-list">
-                ${(data.files || []).map((file) => `<div class="feature-row"><div><strong><a href="${file.url}" target="_blank" rel="noopener">${file.name}</a></strong><span>${file.notes || file.originalName || ""}</span><small>${file.size ? `${Math.round(file.size / 1024)}KB` : ""}</small></div>${canWrite ? `<button class="btn danger" data-delete-file="${file.id}" data-client="${id}">${clean("delete")}</button>` : ""}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}
+                ${(data.files || []).map((file) => `<div class="feature-row"><div><strong><a href="${escapeAttr(file.url)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a></strong><span>${escapeHtml(file.notes || file.originalName || "")}</span><small>${file.size ? `${Math.round(file.size / 1024)}KB` : ""}</small></div>${canWrite ? `<button class="btn danger" data-delete-file="${escapeAttr(file.id)}" data-client="${escapeAttr(id)}">${clean("delete")}</button>` : ""}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}
               </div>
               ${canWrite ? `<form id="clientFileForm" class="inline-form upload-form"><input name="name" placeholder="${uiText("اسم الملف", "שם הקובץ")}"><input name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><input name="notes" placeholder="${uiText("ملاحظات", "הערות")}"><button class="btn">${uiText("رفع ملف", "העלאת קובץ")}</button></form><div class="muted upload-hint">JPG, PNG, WEBP, PDF · 10MB</div>` : ""}
             </div>
@@ -3354,7 +3376,7 @@ renderDashboardHe = function () {
       <section class="dashboard-hero">
         <div>
           <span class="dashboard-kicker">${uiText("واجهة التشغيل اليومية", "מרכז השליטה היומי")}</span>
-          <h2>${clinicName}</h2>
+          <h2>${escapeHtml(clinicName)}</h2>
           <p>${new Date().toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" })} · ${uiText("الدوام", "שעות פעילות")} ${clinicWorkStart()} - ${clinicWorkEnd()}</p>
         </div>
         <div class="dashboard-hero-actions">
@@ -3388,14 +3410,14 @@ renderDashboardHe = function () {
         <div class="dashboard-panel">
           <div class="panel-head"><div><h3>${uiText("المواعيد القادمة", "התורים הקרובים")}</h3><p>${uiText("أقرب مواعيد تحتاج متابعة", "התורים הבאים שדורשים מעקב")}</p></div><button class="btn ghost" data-page="appointments">${uiText("عرض الكل", "הצגת הכל")}</button></div>
           <div class="premium-list">
-            ${upcomingRows.map((item) => `<button type="button" class="premium-row" data-edit="appointments" data-id="${item.id}"><strong>${item.time || "-"} · ${item.clientName || "-"}</strong><span>${item.date} · ${item.serviceName || "-"} · ${item.therapistName || "-"}</span><small>${cleanStatusLabel(item.status || "pending")} · ${cleanPaymentLabel(item.paymentStatus || "unpaid")}</small></button>`).join("") || `<p class="muted">${clean("noData")}</p>`}
+            ${upcomingRows.map((item) => `<button type="button" class="premium-row" data-edit="appointments" data-id="${escapeAttr(item.id)}"><strong>${escapeHtml(item.time || "-")} · ${escapeHtml(item.clientName || "-")}</strong><span>${escapeHtml(item.date)} · ${escapeHtml(item.serviceName || "-")} · ${escapeHtml(item.therapistName || "-")}</span><small>${escapeHtml(cleanStatusLabel(item.status || "pending"))} · ${escapeHtml(cleanPaymentLabel(item.paymentStatus || "unpaid"))}</small></button>`).join("") || `<p class="muted">${clean("noData")}</p>`}
           </div>
         </div>
 
         <div class="dashboard-panel">
           <div class="panel-head"><div><h3>${uiText("توزيع الفريق", "חלוקת צוות")}</h3><p>${uiText("ضغط العمل على المعالجين اليوم", "עומס העבודה של המטפלים היום")}</p></div></div>
           <div class="premium-list compact">
-            ${workload.map((item) => `<div class="workload-row"><div><strong>${item.name}</strong><span>${item.done}/${item.rows.length} ${uiText("مكتمل", "הושלם")}</span></div><div class="workload-bar"><i style="width:${item.rows.length ? Math.round(item.done / item.rows.length * 100) : 0}%"></i></div></div>`).join("") || `<p class="muted">${uiText("لا يوجد ضغط عمل اليوم", "אין עומס עבודה היום")}</p>`}
+            ${workload.map((item) => `<div class="workload-row"><div><strong>${escapeHtml(item.name)}</strong><span>${item.done}/${item.rows.length} ${uiText("مكتمل", "הושלם")}</span></div><div class="workload-bar"><i style="width:${item.rows.length ? Math.round(item.done / item.rows.length * 100) : 0}%"></i></div></div>`).join("") || `<p class="muted">${uiText("لا يوجد ضغط عمل اليوم", "אין עומס עבודה היום")}</p>`}
           </div>
         </div>
 

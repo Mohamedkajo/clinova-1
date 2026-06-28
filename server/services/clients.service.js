@@ -4,6 +4,7 @@ import {
   archiveClientAppointments,
   auditClient,
   canSeeClient,
+  clientTherapistExists,
   createClient,
   findClientCrmFields,
   listClientAppointments,
@@ -114,7 +115,7 @@ export async function getClients(user) {
 
 export async function getClientHistory(user, id) {
   if (!await canSeeClient(user, id)) {
-    return { status: 403, body: { error: "„״§ ״×…„ƒ ״µ„״§״­״© „‡״°״§ ״§„״¹…„" } };
+    return { status: 403, body: { error: "لا تملك صلاحية لهذا العميل" } };
   }
   const client = (await listClientRows(user)).map(clientFromRow).find((item) => item.id === id);
   const appointments = (await listClientAppointments(user, id)).map(appointmentFromRow);
@@ -127,6 +128,9 @@ export async function getClientHistory(user, id) {
 export async function addClient(user, body) {
   if (!hasRequiredFields(body, ["fname", "lname", "phone"])) {
     return { status: 400, body: { error: "First name, last name, and phone are required." } };
+  }
+  if (!await clientTherapistExists(body.therapistId, user.tenantId)) {
+    return { status: 404, body: { error: "Therapist not found." } };
   }
 
   const billing = await assertTenantCanWrite(user.tenantId, "client creation");
@@ -142,6 +146,9 @@ export async function addClient(user, body) {
 export async function editClient(user, id, body) {
   if (!hasRequiredFields(body, ["fname", "lname", "phone"])) {
     return { status: 400, body: { error: "First name, last name, and phone are required." } };
+  }
+  if (!await clientTherapistExists(body.therapistId, user.tenantId)) {
+    return { status: 404, body: { error: "Therapist not found." } };
   }
 
   const current = await findClientCrmFields(id, user.tenantId);
