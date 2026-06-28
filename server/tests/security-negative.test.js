@@ -8,6 +8,12 @@ import { startTestServer } from "./helpers/test-server.js";
 let clinicServer;
 let platformServer;
 
+function isoDateOffset(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 before(async () => {
   [clinicServer, platformServer] = await Promise.all([
     startTestServer(),
@@ -552,6 +558,42 @@ test("invalid date and time inputs return controlled validation errors", async (
     assert.equal(billing.status, 400, `currentPeriodEnd=${value}`);
     assert.deepEqual(billing.body, { error: "Valid current period end is required." });
   }
+});
+
+test("appointment booking rejects past dates and times outside clinic working hours", async () => {
+  const { client: clinicAdmin } = await loginAs(clinicServer.baseUrl, "admin");
+  const appointmentBody = {
+    clientId: 1,
+    serviceId: 1,
+    therapistId: 1,
+    date: isoDateOffset(30),
+    time: "10:00",
+  };
+
+  const pastDate = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, date: isoDateOffset(-1) },
+  });
+  assert.equal(pastDate.status, 400);
+  assert.deepEqual(pastDate.body, { error: "Appointment date cannot be in the past." });
+
+  const beforeWorkday = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, time: "08:00" },
+  });
+  assert.equal(beforeWorkday.status, 400);
+  assert.deepEqual(beforeWorkday.body, { error: "Appointment must be within clinic working hours." });
+
+  const endsAfterWorkday = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, time: "17:30" },
+  });
+  assert.equal(endsAfterWorkday.status, 400);
+  assert.deepEqual(endsAfterWorkday.body, { error: "Appointment must be within clinic working hours." });
+
+  const validAppointment = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, time: "11:00" },
+  });
+  assert.equal(validAppointment.status, 201);
+  assert.ok(validAppointment.body.id);
+  assert.equal((await clinicAdmin.delete(`/api/appointments/${validAppointment.body.id}`)).status, 200);
 });
 
 test("invalid enum and status inputs return controlled validation errors", async () => {

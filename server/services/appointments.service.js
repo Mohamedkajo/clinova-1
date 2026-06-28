@@ -14,6 +14,7 @@ import {
   listConsentTemplatesForCategory,
   updateAppointment,
 } from "../repositories/appointments.repository.js";
+import { clinicSettings } from "../repositories/settings.repository.js";
 import { isValidIsoDate, isValidTime } from "../shared/validation/date-time.js";
 
 function toMinutes(time) {
@@ -21,6 +22,17 @@ function toMinutes(time) {
   return hours * 60 + minutes;
 }
 
+function localTodayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function validWorkTime(value, fallback) {
+  return isValidTime(value) ? String(value).slice(0, 5) : fallback;
+}
 
 function hasRequiredFields(body, fields) {
   return fields.every((field) => body[field] !== undefined && body[field] !== null);
@@ -158,12 +170,26 @@ async function validateAppointmentWrite(user, id, values) {
   if (!await appointmentClientExists(values.clientId, user.tenantId)) {
     return { status: 404, body: { error: "Client not found." } };
   }
-  if (!await appointmentServiceExists(values.serviceId, user.tenantId)) {
+  const service = await findServiceForConflict(values.serviceId, user.tenantId);
+  if (!service) {
     return { status: 404, body: { error: "Service not found." } };
   }
   if (!await appointmentTherapistExists(values.therapistId, user.tenantId)) {
     return { status: 404, body: { error: "Therapist not found." } };
   }
+  if (values.date < localTodayIso()) {
+    return { status: 400, body: { error: "Appointment date cannot be in the past." } };
+  }
+
+  const settings = await clinicSettings(user.tenantId);
+  const workStart = toMinutes(validWorkTime(settings.workStart, "09:00"));
+  const workEnd = toMinutes(validWorkTime(settings.workEnd, "18:00"));
+  const appointmentStart = toMinutes(values.time);
+  const appointmentEnd = appointmentStart + Number(service.duration || 0);
+  if (appointmentStart < workStart || appointmentEnd > workEnd) {
+    return { status: 400, body: { error: "Appointment must be within clinic working hours." } };
+  }
+
   const conflict = await appointmentConflict({
     id,
     tenantId: user.tenantId,

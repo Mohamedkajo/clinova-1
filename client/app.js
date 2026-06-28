@@ -58,8 +58,8 @@ const labels = {
 
 const navByRole = {
   admin: ["dashboard", "calendar", "appointments", "clients", "crm", "whatsapp", "consents", "feedback", "gifts", "categories", "services", "users", "reports", "audit", "settings"],
-  reception: ["dashboard", "calendar", "appointments", "clients", "crm", "consents", "feedback", "gifts", "settings"],
-  therapist: ["dashboard", "calendar", "appointments", "clients", "crm", "consents", "settings"],
+  reception: ["calendar", "appointments", "clients", "crm", "consents", "feedback", "gifts", "settings"],
+  therapist: ["calendar", "appointments", "clients", "crm", "consents", "settings"],
 };
 
 const i18n = {
