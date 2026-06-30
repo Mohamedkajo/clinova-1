@@ -62,6 +62,22 @@ export async function consentAppointmentExists(appointmentId, tenantId) {
   return Boolean(await db.prepare("SELECT id FROM appointments WHERE id = ? AND tenant_id = ?").get(appointmentId, tenantId));
 }
 
+export async function consentTemplateMatchesAppointmentService({ templateId, appointmentId, tenantId }) {
+  if (!appointmentId) return true;
+  const row = await db.prepare(`
+    SELECT t.id
+    FROM appointments a
+    JOIN services s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+    JOIN consent_templates t ON t.category_id = s.category_id
+      AND t.id = ?
+      AND t.tenant_id = a.tenant_id
+      AND t.active = 1
+    WHERE a.id = ? AND a.tenant_id = ?
+    LIMIT 1
+  `).get(templateId, appointmentId, tenantId);
+  return Boolean(row);
+}
+
 export async function consentCategoryExists(categoryId, tenantId) {
   if (!categoryId) return true;
   return Boolean(await db.prepare("SELECT id FROM categories WHERE id = ? AND tenant_id = ? AND active = 1")

@@ -12,6 +12,7 @@ import {
   consentAppointmentExists,
   consentCategoryExists,
   consentTemplateById,
+  consentTemplateMatchesAppointmentService,
   createConsentSignature,
   createConsentTemplate,
   createSignedClientFile,
@@ -65,7 +66,7 @@ function consentPdfLabels(lang = "he") {
   }
   return {
     title: "טופס משפטי חתום",
-    form: "חתימה",
+    form: "טופס",
     client: "לקוח",
     signer: "חותם",
     appointment: "תור",
@@ -74,6 +75,10 @@ function consentPdfLabels(lang = "he") {
     displayName: "טופס חתום",
     notes: "טופס משפטי חתום",
   };
+}
+
+function hasValidConsentDocument(template) {
+  return Boolean(template?.path && template.mimeType === "application/pdf" && existsSync(template.path));
 }
 
 async function createSignedConsentClientFile({ signatureId, tenantId, templateId, clientId, appointmentId, signerName, signatureData, lang = "he" }) {
@@ -138,14 +143,21 @@ export async function signConsent(user, id, body) {
   }
   const clientId = body.clientId || null;
   const appointmentId = body.appointmentId || null;
-  if (!await consentTemplateById(id, user.tenantId)) {
+  const template = await consentTemplateById(id, user.tenantId);
+  if (!template) {
     return { status: 404, body: { error: "Consent file not found." } };
+  }
+  if (!hasValidConsentDocument(template)) {
+    return { status: 400, body: { error: "Valid consent document is required." } };
   }
   if (clientId && !await clientById(clientId, user.tenantId)) {
     return { status: 404, body: { error: "Client not found." } };
   }
   if (!await consentAppointmentExists(appointmentId, user.tenantId)) {
     return { status: 404, body: { error: "Appointment not found." } };
+  }
+  if (!await consentTemplateMatchesAppointmentService({ templateId: id, appointmentId, tenantId: user.tenantId })) {
+    return { status: 400, body: { error: "Valid consent document is required for this service." } };
   }
   const existingSignature = await findDuplicateSignature({
     tenantId: user.tenantId,

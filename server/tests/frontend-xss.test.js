@@ -68,3 +68,18 @@ test("invitation acceptance escapes all server-controlled display values", async
   assert.match(invitationRenderer, /escapeHtml\(roleLabel\(invitation\.role\)\)/);
   assert.doesNotMatch(invitationRenderer, /\$\{invitation\.(?:clinicName|name|email)\}/);
 });
+
+test("legal forms page does not expose direct signing while appointment signing remains", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const start = source.lastIndexOf("renderConsents = function");
+  const end = source.indexOf("renderClientsHe = function", start);
+  const legalFormsRenderer = source.slice(start, end);
+  const appointmentStart = source.indexOf("function openAppointmentConsentModal");
+  const appointmentEnd = source.indexOf("function openConsentSignModal", appointmentStart);
+  const appointmentConsentFlow = source.slice(appointmentStart, appointmentEnd);
+
+  assert.doesNotMatch(legalFormsRenderer, /data-sign-consent/);
+  assert.match(source, /data-sign-appointment/);
+  assert.match(appointmentConsentFlow, /matchingTemplates/);
+  assert.match(appointmentConsentFlow, /openConsentSignModal/);
+});

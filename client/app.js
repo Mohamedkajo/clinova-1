@@ -268,6 +268,7 @@ function closeModal() {
 }
 
 function localizedError(err) {
+  if (!err?.message) return state.lang === "he" ? "אירעה שגיאה" : "حدث خطأ";
   return err?.message || (state.lang === "he" ? "אירעה שגיאה" : "حدث خطأ");
 }
 
@@ -804,7 +805,7 @@ renderConsents = function () {
   return html`
     <div class="feature-grid">
       <div class="card"><h3>${he ? "טפסי PDF לפי קטגוריה" : "ملفات PDF حسب القسم"}</h3>
-        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${t.id}">${he ? "חתימה" : "توقيع"}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${tr("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
+        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${t.title}</strong><span>${t.categoryName || "-"}</span></div><div class="actions"><a class="btn secondary" href="${t.url}" target="_blank" rel="noopener">PDF</a>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${t.id}">${tr("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
       </div>
       <div class="card"><h3>${he ? "חתימות אחרונות" : "آخر التواقيع"}</h3>
         <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${s.clientName || s.signerName}</strong><span>${s.templateTitle} · ${s.signedAt || ""}</span></div></div>`).join("") || `<p class="muted">${tr("noData")}</p>`}</div>
@@ -2916,9 +2917,12 @@ function appointmentTableFull(rows, actions = true) {
 function openAppointmentConsentModal(appointmentId) {
   const appointment = (state.data.appointments || []).find((item) => Number(item.id) === Number(appointmentId));
   const templates = state.data.consentTemplates || [];
+  const service = (state.data.services || []).find((item) => Number(item.id) === Number(appointment?.serviceId));
+  const matchingTemplates = templates.filter((item) => Number(item.categoryId) === Number(service?.categoryId));
   if (!appointment) return showCenterError(uiText("لم يتم العثور على الموعد", "התור לא נמצא"));
   if (!templates.length) return showCenterError(uiText("لا توجد نماذج إقرار مرفوعة", "אין טפסים משפטיים שהועלו"));
-  openConsentSignModal(Number(templates[0].id), { appointmentId, clientId: appointment.clientId, signerName: appointment.clientName || "", lockedAppointment: true });
+  if (!matchingTemplates.length) return showCenterError(uiText("لا يوجد مستند إقرار صالح لهذه الخدمة", "אין טופס משפטי תקף לשירות הזה"));
+  openConsentSignModal(Number(matchingTemplates[0].id), { appointmentId, clientId: appointment.clientId, signerName: appointment.clientName || "", lockedAppointment: true });
 }
 
 function openConsentSignModal(templateId, defaults = {}) {
@@ -3238,7 +3242,7 @@ renderConsents = function () {
   return html`
     <div class="feature-grid">
       <div class="card"><h3>${uiText("نماذج PDF حسب القسم", "טפסי PDF לפי קטגוריה")}</h3>
-        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${escapeHtml(t.title)}</strong><span>${escapeHtml(t.categoryName || "-")}</span><small>${escapeHtml(t.originalName || "")}</small></div><div class="actions"><a class="btn secondary" href="${escapeAttr(t.url)}" target="_blank" rel="noopener">PDF</a><button class="btn secondary" data-sign-consent="${escapeAttr(t.id)}">${uiText("توقيع", "חתימה")}</button>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${escapeAttr(t.id)}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+        <div class="stack-list">${templates.map((t) => `<div class="feature-row"><div><strong>${escapeHtml(t.title)}</strong><span>${escapeHtml(t.categoryName || "-")}</span><small>${escapeHtml(t.originalName || "")}</small></div><div class="actions"><a class="btn secondary" href="${escapeAttr(t.url)}" target="_blank" rel="noopener">PDF</a>${state.user.role !== "therapist" ? `<button class="btn danger" data-delete-consent="${escapeAttr(t.id)}">${clean("delete")}</button>` : ""}</div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
       </div>
       <div class="card"><h3>${uiText("آخر التواقيع", "חתימות אחרונות")}</h3>
         <div class="stack-list">${signatures.map((s) => `<div class="feature-row"><div><strong>${escapeHtml(s.clientName || s.signerName || "-")}</strong><span>${escapeHtml(s.templateTitle || "")} · ${escapeHtml(s.signedAt || "")}</span></div></div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
