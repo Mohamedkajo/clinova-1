@@ -82,6 +82,52 @@ test("clinic CRUD workflow uses disposable records and archives supported record
   assert.equal(clientUpdate.status, 200);
   assert.ok((await client.get("/api/clients")).body.some((item) => item.id === clientId && item.stage === "contacted"));
 
+  const followUpUpdate = await client.put(`/api/clients/${clientId}`, {
+    body: {
+      fname: "Safe",
+      lname: `Client Updated ${suffix}`,
+      phone: "0500000101",
+      email: `safe-step-101-${suffix}@example.test`,
+      therapistId: therapist.id,
+      stage: "follow_up",
+      source: "automated-test",
+      tags: ["safe-step-101", "updated"],
+      notes: "Updated disposable client",
+    },
+  });
+  assert.equal(followUpUpdate.status, 200);
+  assert.ok((await client.get("/api/clients")).body.some((item) => item.id === clientId && item.stage === "follow_up"));
+
+  const invalidStage = await client.put(`/api/clients/${clientId}`, {
+    body: {
+      fname: "Safe",
+      lname: `Client Updated ${suffix}`,
+      phone: "0500000101",
+      email: `safe-step-101-${suffix}@example.test`,
+      therapistId: therapist.id,
+      stage: "not-a-stage",
+      source: "automated-test",
+      tags: ["safe-step-101", "updated"],
+      notes: "Updated disposable client",
+    },
+  });
+  assert.equal(invalidStage.status, 400);
+  assert.equal(invalidStage.body.error, "Valid client stage is required.");
+
+  const noteOne = await client.post(`/api/clients/${clientId}/notes`, { body: { note: `First CRM note ${suffix}` } });
+  assert.equal(noteOne.status, 201);
+  const noteTwo = await client.post(`/api/clients/${clientId}/notes`, { body: { note: `Latest CRM note ${suffix}` } });
+  assert.equal(noteTwo.status, 201);
+  const noteHistory = await client.get(`/api/clients/${clientId}/history`);
+  assert.equal(noteHistory.status, 200);
+  assert.ok(noteHistory.body.crmEvents.some((event) => event.description === `Latest CRM note ${suffix}`));
+  assert.equal(noteHistory.body.crmEvents[0].description, `Latest CRM note ${suffix}`);
+
+  const { client: therapistHttp, response: therapistLogin } = await loginAs(clinicServer.baseUrl, "sara");
+  assert.equal(therapistLogin.status, 200);
+  const therapistNote = await therapistHttp.post(`/api/clients/${clientId}/notes`, { body: { note: "Therapist should not write direct client notes" } });
+  assert.equal(therapistNote.status, 403);
+
   const appointmentBody = {
     clientId: String(clientId),
     serviceId: String(serviceId),
@@ -166,6 +212,15 @@ test("clinic CRUD workflow uses disposable records and archives supported record
   const feedback = feedbackRows.body.find((item) => item.id === feedbackCreate.body.id);
   assert.ok(feedback?.token);
   assert.equal((await client.get(`/api/public/feedback/${feedback.token}`)).status, 200);
+  const feedbackSubmit = await client.post(`/api/public/feedback/${feedback.token}`, {
+    body: { rating: 5, comment: `Great visit ${suffix}` },
+  });
+  assert.equal(feedbackSubmit.status, 200);
+  const submittedFeedbackRows = await client.get("/api/feedback");
+  const submittedFeedback = submittedFeedbackRows.body.find((item) => item.id === feedbackCreate.body.id);
+  assert.equal(submittedFeedback.status, "submitted");
+  assert.equal(submittedFeedback.rating, 5);
+  assert.equal(submittedFeedback.comment, `Great visit ${suffix}`);
 
   assert.equal((await client.delete(`/api/appointments/${appointmentId}`)).status, 200);
   assert.ok(!(await client.get("/api/appointments")).body.some((item) => item.id === appointmentId));

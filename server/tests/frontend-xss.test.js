@@ -83,3 +83,16 @@ test("legal forms page does not expose direct signing while appointment signing 
   assert.match(appointmentConsentFlow, /matchingTemplates/);
   assert.match(appointmentConsentFlow, /openConsentSignModal/);
 });
+
+test("client profile exposes controlled note action and limits visible CRM events", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("openClientProfile = async function");
+  const end = source.indexOf("topActionI18n = function", start);
+  const profileRenderer = source.slice(start, end);
+
+  assert.match(profileRenderer, /clientNoteForm/);
+  assert.match(profileRenderer, /\/api\/clients\/\$\{id\}\/notes/);
+  assert.match(profileRenderer, /crmEvents\.slice\(0, 3\)/);
+  assert.match(profileRenderer, /hiddenCrmEvents/);
+  assert.match(profileRenderer, /details><summary/);
+});

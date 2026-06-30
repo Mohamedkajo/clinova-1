@@ -56,6 +56,18 @@ export async function addCrmEvent({ tenantId, clientId, userId, type, descriptio
     .run(tenantId, clientId || null, userId || null, type, description);
 }
 
+export async function listClientCrmEvents(clientId, tenantId) {
+  return await db.prepare(`
+    SELECT e.id, e.client_id AS clientId, e.user_id AS userId, e.type, e.description,
+           e.created_at AS createdAt, u.name AS userName
+    FROM crm_events e
+    LEFT JOIN users u ON u.id = e.user_id
+    WHERE e.tenant_id = ? AND e.client_id = ?
+    ORDER BY e.id DESC
+    LIMIT 100
+  `).all(tenantId, clientId);
+}
+
 export async function listClientAppointments(user, clientId) {
   const base = `
     SELECT a.*, c.fname, c.lname, c.phone, s.name AS service_name, s.duration, s.price, u.name AS therapist_name

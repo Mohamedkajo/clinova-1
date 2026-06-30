@@ -8,6 +8,7 @@ import {
   createClient,
   findClientCrmFields,
   listClientAppointments,
+  listClientCrmEvents,
   listClientFiles,
   listClientRows,
   tenantBillingSnapshot,
@@ -19,6 +20,8 @@ const planCatalog = {
   growth: { name: "Growth", monthlyPrice: 99, maxUsers: 10, maxClients: 2000, whatsapp: true, billing: false },
   scale: { name: "Scale", monthlyPrice: 199, maxUsers: null, maxClients: null, whatsapp: true, billing: true },
 };
+
+const validClientStages = new Set(["lead", "contacted", "qualified", "active", "follow_up", "vip", "inactive", "lost"]);
 
 function jsonArray(value) {
   try {
@@ -109,6 +112,13 @@ function clientValues(body, existing = {}) {
   };
 }
 
+function validateClientStage(body) {
+  if (!Object.prototype.hasOwnProperty.call(body, "stage") || body.stage === undefined || body.stage === null || body.stage === "") {
+    return null;
+  }
+  return validClientStages.has(body.stage) ? null : { status: 400, body: { error: "Valid client stage is required." } };
+}
+
 export async function getClients(user) {
   return { status: 200, body: (await listClientRows(user)).map(clientFromRow) };
 }
@@ -121,7 +131,7 @@ export async function getClientHistory(user, id) {
   const appointments = (await listClientAppointments(user, id)).map(appointmentFromRow);
   return {
     status: 200,
-    body: { client, appointments, files: await listClientFiles(id, user.tenantId) },
+    body: { client, appointments, files: await listClientFiles(id, user.tenantId), crmEvents: await listClientCrmEvents(id, user.tenantId) },
   };
 }
 
@@ -129,6 +139,8 @@ export async function addClient(user, body) {
   if (!hasRequiredFields(body, ["fname", "lname", "phone"])) {
     return { status: 400, body: { error: "First name, last name, and phone are required." } };
   }
+  const stageValidation = validateClientStage(body);
+  if (stageValidation) return stageValidation;
   if (!await clientTherapistExists(body.therapistId, user.tenantId)) {
     return { status: 404, body: { error: "Therapist not found." } };
   }
@@ -147,6 +159,8 @@ export async function editClient(user, id, body) {
   if (!hasRequiredFields(body, ["fname", "lname", "phone"])) {
     return { status: 400, body: { error: "First name, last name, and phone are required." } };
   }
+  const stageValidation = validateClientStage(body);
+  if (stageValidation) return stageValidation;
   if (!await clientTherapistExists(body.therapistId, user.tenantId)) {
     return { status: 404, body: { error: "Therapist not found." } };
   }
@@ -161,6 +175,19 @@ export async function editClient(user, id, body) {
   }
   await auditClient(user.id, "update", id, user.tenantId);
   return { status: 200, body: { ok: true } };
+}
+
+export async function addClientNote(user, id, body) {
+  if (!await canSeeClient(user, id)) {
+    return { status: 404, body: { error: "Client not found" } };
+  }
+  const note = String(body.note || body.description || "").trim();
+  if (!note) {
+    return { status: 400, body: { error: "Note is required." } };
+  }
+  await addCrmEvent({ tenantId: user.tenantId, clientId: id, userId: user.id, type: "note", description: note });
+  await auditClient(user.id, "note", id, user.tenantId);
+  return { status: 201, body: { ok: true } };
 }
 
 export async function removeClient(user, id) {

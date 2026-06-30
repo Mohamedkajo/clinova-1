@@ -1446,7 +1446,7 @@ formFieldsHe = function (resource, row) {
       ${field("phone", he ? "טלפון" : "الهاتف", row.phone)}
       ${field("email", he ? "אימייל" : "البريد", row.email, "email", false)}
       ${select("therapistId", he ? "מטפלת" : "المعالجة", therapists(), row.therapistId, false)}
-      ${select("stage", he ? "שלב CRM" : "مرحلة CRM", [["lead", crmStageLabel("lead")], ["qualified", crmStageLabel("qualified")], ["active", crmStageLabel("active")], ["vip", "VIP"], ["lost", crmStageLabel("lost")]], row.stage || "lead")}
+      ${select("stage", he ? "שלב CRM" : "مرحلة CRM", [["lead", crmStageLabel("lead")], ["contacted", crmStageLabel("contacted")], ["qualified", crmStageLabel("qualified")], ["active", crmStageLabel("active")], ["follow_up", crmStageLabel("follow_up")], ["vip", "VIP"], ["inactive", crmStageLabel("inactive")], ["lost", crmStageLabel("lost")]], row.stage || "lead")}
       ${field("source", he ? "מקור" : "المصدر", row.source || "", "text", false)}
       ${field("tags", he ? "תגיות" : "الوسوم", tagsValue, "text", false)}
       ${field("notes", he ? "הערות" : "ملاحظات", row.notes, "textarea", false, "full")}
@@ -3269,6 +3269,10 @@ openClientProfile = async function (id) {
     const data = await api(`/api/clients/${id}/history`);
     const canWrite = state.user.role !== "therapist";
     const client = data.client || {};
+    const crmEvents = data.crmEvents || [];
+    const visibleCrmEvents = crmEvents.slice(0, 3);
+    const hiddenCrmEvents = crmEvents.slice(3);
+    const renderCrmEvent = (event) => `<div class="feature-row"><div><strong>${escapeHtml(event.type || "-")}</strong><span>${escapeHtml(event.createdAt || "")}${event.userName ? ` · ${escapeHtml(event.userName)}` : ""}</span><small>${escapeHtml(event.description || "")}</small></div></div>`;
     document.getElementById("modalRoot").innerHTML = html`
       <div class="modal">
         <div class="modal-card wide">
@@ -3282,8 +3286,16 @@ openClientProfile = async function (id) {
             <div class="card mini"><strong>${uiText("المرحلة", "שלב")}</strong><span>${escapeHtml(stageLabel(client.stage))}</span></div>
             <div class="card mini"><strong>${uiText("ملاحظات", "הערות")}</strong><span class="pre-wrap">${escapeHtml(client.notes || "-")}</span></div>
             <div class="profile-section full">
-              <h4>${uiText("سجل المواعيد", "היסטוריית תורים")}</h4>
+              <h4>${uiText("\u0633\u062c\u0644 \u0627\u0644\u0645\u0648\u0627\u0639\u064a\u062f", "\u05d4\u05d9\u05e1\u05d8\u05d5\u05e8\u05d9\u05d9\u05ea \u05ea\u05d5\u05e8\u05d9\u05dd")}</h4>
               ${appointmentTableClean(data.appointments || [], false)}
+            </div>
+            <div class="profile-section full">
+              <h4>${uiText("\u0623\u062d\u062f\u0627\u062b CRM \u0627\u0644\u0623\u062e\u064a\u0631\u0629", "\u05d0\u05d9\u05e8\u05d5\u05e2\u05d9 CRM \u05d0\u05d7\u05e8\u05d5\u05e0\u05d9\u05dd")}</h4>
+              <div class="stack-list">
+                ${visibleCrmEvents.map(renderCrmEvent).join("") || `<p class="muted">${clean("noData")}</p>`}
+                ${hiddenCrmEvents.length ? `<details><summary>${uiText("\u0639\u0631\u0636 \u0627\u0644\u0645\u0632\u064a\u062f", "\u05d4\u05e6\u05d2 \u05e2\u05d5\u05d3")}</summary>${hiddenCrmEvents.map(renderCrmEvent).join("")}</details>` : ""}
+              </div>
+              ${canWrite ? `<form id="clientNoteForm" class="inline-form"><input name="note" placeholder="${uiText("\u0625\u0636\u0627\u0641\u0629 \u0645\u0644\u0627\u062d\u0638\u0629", "\u05d4\u05d5\u05e1\u05e3 \u05d4\u05e2\u05e8\u05d4")}" required><button class="btn secondary">${uiText("\u0625\u0636\u0627\u0641\u0629 \u0645\u0644\u0627\u062d\u0638\u0629", "\u05d4\u05d5\u05e1\u05e3 \u05d4\u05e2\u05e8\u05d4")}</button></form>` : ""}
             </div>
             <div class="profile-section full">
               <h4>${uiText("ملفات ومستندات العميل", "קבצים ומסמכי לקוח")}</h4>
@@ -3297,6 +3309,13 @@ openClientProfile = async function (id) {
       </div>
     `;
     document.getElementById("closeModal").addEventListener("click", closeModal);
+    const noteForm = document.getElementById("clientNoteForm");
+    if (noteForm) noteForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await api(`/api/clients/${id}/notes`, { method: "POST", body: Object.fromEntries(new FormData(noteForm)) });
+      await loadData();
+      openClientProfile(id);
+    });
     const fileForm = document.getElementById("clientFileForm");
     if (fileForm) fileForm.addEventListener("submit", async (event) => {
       event.preventDefault();
