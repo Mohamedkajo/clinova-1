@@ -140,10 +140,11 @@ test("foreign tenant references are rejected before appointment, gift, or consen
 
   const tenantBEmail = `tenant-b-${suffix}@example.test`;
   const tenantBPassword = "TenantBPassword123!";
+  const tenantBSlug = `tenant-b-${suffix}`;
   const provision = await platformOwner.post("/api/platform/tenants", {
     body: {
       clinicName: `Tenant B ${suffix}`,
-      slug: `tenant-b-${suffix}`,
+      slug: tenantBSlug,
       ownerName: "Tenant B Admin",
       email: tenantBEmail,
       password: tenantBPassword,
@@ -154,7 +155,7 @@ test("foreign tenant references are rejected before appointment, gift, or consen
   assert.equal(provision.status, 201);
 
   const { client: tenantA } = await loginAs(tenantServer.baseUrl, "admin");
-  const { client: tenantB } = await loginAs(tenantServer.baseUrl, tenantBEmail, tenantBPassword);
+  const { client: tenantB } = await loginAs(tenantServer.baseUrl, tenantBEmail, tenantBPassword, tenantBSlug);
 
   const tenantABootstrap = await tenantA.get("/api/bootstrap");
   const tenantATherapistId = tenantABootstrap.body.users.find((user) => user.username === "sara").id;

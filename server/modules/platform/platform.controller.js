@@ -1,7 +1,7 @@
 import { json } from "../../shared/http/json-response.js";
 import { requirePlatformOwner } from "../../services/permissions.service.js";
 import { createPlatformBackup, listPlatformBackups } from "./platform-backups.service.js";
-import { getPlatformHealth, getPlatformTenants, updatePlatformTenant } from "./platform.service.js";
+import { deactivatePlatformTenant, getPlatformHealth, getPlatformTenants, updatePlatformTenant } from "./platform.service.js";
 import { readJsonBody } from "../../shared/http/json-body.js";
 
 export async function handlePlatformRoute(req, res, url) {
@@ -10,7 +10,8 @@ export async function handlePlatformRoute(req, res, url) {
   const isBackupCreate = req.method === "POST" && url.pathname === "/api/platform/backups";
   const isTenantRead = req.method === "GET" && url.pathname === "/api/platform/tenants";
   const updateMatch = req.method === "PUT" ? url.pathname.match(/^\/api\/platform\/tenants\/(\d+)$/) : null;
-  if (!isHealthRead && !isBackupRead && !isBackupCreate && !isTenantRead && !updateMatch) return false;
+  const deactivateMatch = req.method === "DELETE" ? url.pathname.match(/^\/api\/platform\/tenants\/(\d+)$/) : null;
+  if (!isHealthRead && !isBackupRead && !isBackupCreate && !isTenantRead && !updateMatch && !deactivateMatch) return false;
 
   const auth = await requirePlatformOwner(req);
   if (!auth.ok) {
@@ -26,7 +27,9 @@ export async function handlePlatformRoute(req, res, url) {
         ? await createPlatformBackup(auth.user)
     : isTenantRead
       ? await getPlatformTenants()
-      : await updatePlatformTenant(auth.user, Number(updateMatch[1]), await readJsonBody(req));
+      : updateMatch
+        ? await updatePlatformTenant(auth.user, Number(updateMatch[1]), await readJsonBody(req))
+        : await deactivatePlatformTenant(auth.user, Number(deactivateMatch[1]));
   json(res, result.status, result.body);
   return true;
 }

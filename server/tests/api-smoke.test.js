@@ -61,7 +61,7 @@ test("signup remains disabled with its exact response", async () => {
 test("seeded clinic admin can login, read me/bootstrap, and logout", async () => {
   const client = createHttpClient(testServer.baseUrl);
   const login = await client.post("/api/login", {
-    body: { username: "admin", password: "ChangeMe123!" },
+    body: { username: "admin", password: "ChangeMe123!", clinicIdentifier: "demo" },
   });
 
   assert.equal(login.status, 200);
@@ -90,7 +90,7 @@ test("seeded clinic admin can login, read me/bootstrap, and logout", async () =>
 test("invalid broad-resource subpaths return the final API 404", async () => {
   const client = createHttpClient(testServer.baseUrl);
   const login = await client.post("/api/login", {
-    body: { username: "reception", password: "ChangeMe123!" },
+    body: { username: "reception", password: "ChangeMe123!", clinicIdentifier: "demo" },
   });
   assert.equal(login.status, 200);
 

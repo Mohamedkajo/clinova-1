@@ -53,10 +53,10 @@ export function createHttpClient(baseUrl) {
   };
 }
 
-export async function loginAs(baseUrl, username, password = "ChangeMe123!") {
+export async function loginAs(baseUrl, username, password = "ChangeMe123!", clinicIdentifier = "demo") {
   const client = createHttpClient(baseUrl);
   const response = await client.post("/api/login", {
-    body: { username, password },
+    body: { username, password, clinicIdentifier },
   });
   return { client, response };
 }

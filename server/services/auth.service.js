@@ -6,7 +6,9 @@ import {
   deleteSession,
   findActiveSession,
   findActiveUser,
+  findPlatformOwnerForLogin,
   findUserForLogin,
+  tenantIdentifierExists,
   toUser,
 } from "../repositories/auth.repository.js";
 import { resolveClientIp } from "../shared/http/client-ip.js";
@@ -15,22 +17,22 @@ const loginAttempts = new Map();
 const maxLoginAttempts = 5;
 const loginWindowMs = 15 * 60 * 1000;
 
-function loginKey(req, username) {
-  return `${resolveClientIp(req)}:${String(username || "").toLowerCase()}`;
+function loginKey(req, username, clinicIdentifier = "") {
+  return `${resolveClientIp(req)}:${String(clinicIdentifier || "").toLowerCase()}:${String(username || "").toLowerCase()}`;
 }
 
-function isLoginBlocked(req, username) {
-  const item = loginAttempts.get(loginKey(req, username));
+function isLoginBlocked(req, username, clinicIdentifier = "") {
+  const item = loginAttempts.get(loginKey(req, username, clinicIdentifier));
   if (!item) return false;
   if (Date.now() - item.firstAt > loginWindowMs) {
-    loginAttempts.delete(loginKey(req, username));
+    loginAttempts.delete(loginKey(req, username, clinicIdentifier));
     return false;
   }
   return item.count >= maxLoginAttempts;
 }
 
-function recordFailedLogin(req, username) {
-  const key = loginKey(req, username);
+function recordFailedLogin(req, username, clinicIdentifier = "") {
+  const key = loginKey(req, username, clinicIdentifier);
   const now = Date.now();
   const item = loginAttempts.get(key);
   if (!item || now - item.firstAt > loginWindowMs) {
@@ -40,8 +42,8 @@ function recordFailedLogin(req, username) {
   item.count += 1;
 }
 
-function clearFailedLogin(req, username) {
-  loginAttempts.delete(loginKey(req, username));
+function clearFailedLogin(req, username, clinicIdentifier = "") {
+  loginAttempts.delete(loginKey(req, username, clinicIdentifier));
 }
 
 export function parseCookies(req) {
@@ -63,23 +65,38 @@ export function clearedSessionCookie() {
 
 export async function login(req, body) {
   const identifier = String(body.identifier || body.email || body.username || "").trim();
-  if (isLoginBlocked(req, identifier)) {
+  const clinicIdentifier = String(body.clinicIdentifier || body.tenantSlug || body.tenant || "").trim();
+  if (isLoginBlocked(req, identifier, clinicIdentifier)) {
     return {
       status: 429,
-      body: { error: "محاولات دخول كثيرة. حاول مرة أخرى بعد 15 دقيقة" },
+      body: { error: "Too many login attempts. Try again in 15 minutes." },
     };
   }
 
-  const row = await findUserForLogin(identifier, body.tenantSlug || body.tenant || "");
+  let row = null;
+  if (clinicIdentifier) {
+    if (!await tenantIdentifierExists(clinicIdentifier)) {
+      recordFailedLogin(req, identifier, clinicIdentifier);
+      return { status: 400, body: { error: "Clinic identifier not found." } };
+    }
+    row = await findUserForLogin(identifier, clinicIdentifier);
+  } else {
+    row = await findPlatformOwnerForLogin(identifier);
+    if (!row) {
+      recordFailedLogin(req, identifier, clinicIdentifier);
+      return { status: 400, body: { error: "Clinic identifier is required." } };
+    }
+  }
+
   if (!row || !verifyPassword(body.password || "", row.password_hash)) {
-    recordFailedLogin(req, identifier);
+    recordFailedLogin(req, identifier, clinicIdentifier);
     return {
       status: 401,
-      body: { error: "اسم المستخدم أو كلمة المرور غير صحيحة" },
+      body: { error: "Invalid username or password." },
     };
   }
 
-  clearFailedLogin(req, identifier);
+  clearFailedLogin(req, identifier, clinicIdentifier);
   const token = createSessionToken(config.sessionSecret);
   const id = token.split(".")[0];
   const expiresAt = Date.now() + 1000 * 60 * 60 * 12;

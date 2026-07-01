@@ -7,6 +7,7 @@ export const platformRoutes = [
   route("GET", exact("/api/platform/tenants"), { module: "platform" }),
   route("POST", exact("/api/platform/tenants"), { module: "platform-provisioning" }),
   route("PUT", matches(/^\/api\/platform\/tenants\/\d+$/), { module: "platform" }),
+  route("DELETE", matches(/^\/api\/platform\/tenants\/\d+$/), { module: "platform" }),
   route("POST", matches(/^\/api\/platform\/tenants\/\d+\/invoices$/), { module: "platform-invoices" }),
   route("PUT", matches(/^\/api\/platform\/invoices\/\d+$/), { module: "platform-invoices" }),
   route("POST", exact("/api/platform/billing/auto-run"), { module: "platform-billing" }),

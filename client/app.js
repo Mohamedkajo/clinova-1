@@ -404,6 +404,17 @@ function bindPageActions() {
     state.data.platformTenants = result.tenants;
     renderApp();
   }));
+  document.querySelectorAll("[data-platform-tenant-deactivate]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirm(uiText("تعطيل هذه العيادة؟", "להשבית את המרפאה?"))) return;
+    try {
+      const result = await api(`/api/platform/tenants/${button.dataset.platformTenantDeactivate}`, { method: "DELETE" });
+      state.data.platformTenants = result.tenants;
+      showCenterError(uiText("تم تعطيل العيادة", "המרפאה הושבתה"));
+      renderApp();
+    } catch (err) {
+      showCenterError(localizedError(err));
+    }
+  }));
   document.querySelectorAll("[data-platform-password-form]").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const tenantId = form.dataset.platformPasswordForm;
@@ -496,7 +507,21 @@ function renderLoginLegacy(error = "") {
       </form>
     </main>
   `);
-  document.getElementById("loginForm").addEventListener("submit", async (event) => {
+  const loginForm = document.getElementById("loginForm");
+  const usernameInput = loginForm.querySelector("input[name='username']");
+  if (usernameInput && !loginForm.querySelector("input[name='clinicIdentifier']")) {
+    const clinicField = document.createElement("div");
+    clinicField.className = "field";
+    const clinicLabel = document.createElement("label");
+    clinicLabel.textContent = he ? "מזהה מרפאה" : "معرّف العيادة";
+    const clinicInput = document.createElement("input");
+    clinicInput.name = "clinicIdentifier";
+    clinicInput.autocomplete = "organization";
+    clinicInput.placeholder = "demo";
+    clinicField.append(clinicLabel, clinicInput);
+    usernameInput.closest(".field").before(clinicField);
+  }
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = Object.fromEntries(new FormData(event.currentTarget));
     try {
@@ -1823,6 +1848,9 @@ function platformClinicRow(tenant, he) {
       <button class="btn danger">${he ? "איפוס" : "تصفير"}</button>
       ${reset ? `<span class="pill done">${he ? "עודכן" : "تم التحديث"}: ${escapeHtml(reset.owner?.username || reset.owner?.email || "")}</span>` : ""}
     </form>
+    <div class="actions">
+      <button class="btn danger" data-platform-tenant-deactivate="${escapeAttr(tenant.id)}" ${Number(tenant.id) === 1 ? "disabled" : ""}>${he ? "השבתת מרפאה" : "تعطيل العيادة"}</button>
+    </div>
   </div>`;
 }
 

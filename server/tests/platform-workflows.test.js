@@ -28,6 +28,13 @@ test("platform auth, provisioning, update, password reset, invoices, and no-op a
   assert.equal(ownerLogin.body.user.platformOwner, true);
   assert.equal((await platformOwner.get("/api/platform/tenants")).status, 200);
 
+  const platformOwnerWithoutClinic = createHttpClient(testServer.baseUrl);
+  const platformOwnerDirectLogin = await platformOwnerWithoutClinic.post("/api/login", {
+    body: { username: "admin", password: "ChangeMe123!" },
+  });
+  assert.equal(platformOwnerDirectLogin.status, 200);
+  assert.equal(platformOwnerDirectLogin.body.user.platformOwner, true);
+
   const invalidProvision = await platformOwner.post("/api/platform/tenants", { body: {} });
   assert.equal(invalidProvision.status, 400);
   assert.equal(typeof invalidProvision.body.error, "string");
@@ -53,7 +60,26 @@ test("platform auth, provisioning, update, password reset, invoices, and no-op a
   assert.equal(tenant.subscriptionPlan, "starter");
   assert.equal(tenant.subscriptionStatus, "trial");
 
-  const { client: clinicAdmin, response: clinicLogin } = await loginAs(testServer.baseUrl, ownerEmail, originalPassword);
+  const missingClinicLogin = await createHttpClient(testServer.baseUrl).post("/api/login", {
+    body: { username: ownerEmail, password: originalPassword },
+  });
+  assert.equal(missingClinicLogin.status, 400);
+  assert.deepEqual(missingClinicLogin.body, { error: "Clinic identifier is required." });
+
+  const wrongClinicLogin = await createHttpClient(testServer.baseUrl).post("/api/login", {
+    body: { username: ownerEmail, password: originalPassword, clinicIdentifier: "missing-clinic" },
+  });
+  assert.equal(wrongClinicLogin.status, 400);
+  assert.deepEqual(wrongClinicLogin.body, { error: "Clinic identifier not found." });
+
+  const wrongPasswordLogin = await createHttpClient(testServer.baseUrl).post("/api/login", {
+    body: { username: ownerEmail, password: "WrongPassword!", clinicIdentifier: slug },
+  });
+  assert.equal(wrongPasswordLogin.status, 401);
+  assert.deepEqual(wrongPasswordLogin.body, { error: "Invalid username or password." });
+  assert.doesNotMatch(wrongPasswordLogin.body.error, /�|Ù|Ø|ðŸ/);
+
+  const { client: clinicAdmin, response: clinicLogin } = await loginAs(testServer.baseUrl, ownerEmail, originalPassword, slug);
   assert.equal(clinicLogin.status, 200);
   assert.equal(clinicLogin.body.user.role, "admin");
   assert.equal(clinicLogin.body.user.platformOwner, false);
@@ -98,10 +124,81 @@ test("platform auth, provisioning, update, password reset, invoices, and no-op a
   assert.equal(reset.status, 200);
   assert.equal(reset.body.owner.email, ownerEmail);
 
-  const resetLogin = await loginAs(testServer.baseUrl, ownerEmail, resetPassword);
+  const resetLogin = await loginAs(testServer.baseUrl, ownerEmail, resetPassword, slug);
   assert.equal(resetLogin.response.status, 200);
   assert.equal(resetLogin.response.body.user.tenantId, tenantId);
   assert.equal((await resetLogin.client.get("/api/bootstrap")).status, 200);
+
+  const secondSlug = `safe-step-103-b-${suffix}`;
+  const secondOwnerEmail = `safe-step-103-owner-b-${suffix}@example.test`;
+  const secondProvision = await platformOwner.post("/api/platform/tenants", {
+    body: {
+      clinicName: `SAFE STEP 103 Clinic B ${suffix}`,
+      slug: secondSlug,
+      ownerName: "Safe Step 103 Owner B",
+      email: secondOwnerEmail,
+      password: originalPassword,
+      plan: "starter",
+      status: "trial",
+    },
+  });
+  assert.equal(secondProvision.status, 201);
+  const secondTenantId = secondProvision.body.tenant.id;
+
+  const sharedUsername = `shared-${suffix}`;
+  const sharedPasswordA = "SharedTenantA123!";
+  const sharedPasswordB = "SharedTenantB123!";
+  const createSharedA = await resetLogin.client.post("/api/users", {
+    body: {
+      name: "Shared Tenant A",
+      username: sharedUsername,
+      email: `shared-a-${suffix}@example.test`,
+      password: sharedPasswordA,
+      role: "reception",
+    },
+  });
+  assert.equal(createSharedA.status, 201);
+
+  const { client: secondClinicAdmin, response: secondClinicLogin } = await loginAs(testServer.baseUrl, secondOwnerEmail, originalPassword, secondSlug);
+  assert.equal(secondClinicLogin.status, 200);
+  const createSharedB = await secondClinicAdmin.post("/api/users", {
+    body: {
+      name: "Shared Tenant B",
+      username: sharedUsername,
+      email: `shared-b-${suffix}@example.test`,
+      password: sharedPasswordB,
+      role: "reception",
+    },
+  });
+  assert.equal(createSharedB.status, 201);
+
+  const sharedALogin = await loginAs(testServer.baseUrl, sharedUsername, sharedPasswordA, slug);
+  assert.equal(sharedALogin.response.status, 200);
+  assert.equal(sharedALogin.response.body.user.tenantId, tenantId);
+
+  const sharedWrongTenantLogin = await loginAs(testServer.baseUrl, sharedUsername, sharedPasswordB, slug);
+  assert.equal(sharedWrongTenantLogin.response.status, 401);
+
+  const sharedBLogin = await loginAs(testServer.baseUrl, sharedUsername, sharedPasswordB, secondSlug);
+  assert.equal(sharedBLogin.response.status, 200);
+  assert.equal(sharedBLogin.response.body.user.tenantId, secondTenantId);
+
+  const defaultTenantDelete = await platformOwner.delete("/api/platform/tenants/1");
+  assert.equal(defaultTenantDelete.status, 400);
+  assert.deepEqual(defaultTenantDelete.body, { error: "Default tenant cannot be deactivated." });
+
+  assert.equal((await createHttpClient(testServer.baseUrl).delete(`/api/platform/tenants/${secondTenantId}`)).status, 401);
+  assert.equal((await resetLogin.client.delete(`/api/platform/tenants/${secondTenantId}`)).status, 403);
+
+  const { client: reception } = await loginAs(testServer.baseUrl, "reception");
+  assert.equal((await reception.delete(`/api/platform/tenants/${secondTenantId}`)).status, 403);
+  const { client: therapist } = await loginAs(testServer.baseUrl, "sara");
+  assert.equal((await therapist.delete(`/api/platform/tenants/${secondTenantId}`)).status, 403);
+
+  const deactivateSecondTenant = await platformOwner.delete(`/api/platform/tenants/${secondTenantId}`);
+  assert.equal(deactivateSecondTenant.status, 200);
+  const deactivatedTenant = deactivateSecondTenant.body.tenants.find((item) => item.id === secondTenantId);
+  assert.equal(deactivatedTenant.subscriptionStatus, "cancelled");
 
   for (const amount of ["not-a-number", "NaN", "Infinity", "", "   ", null, true]) {
     const invalidAmount = await platformOwner.post(`/api/platform/tenants/${tenantId}/invoices`, {

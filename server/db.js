@@ -652,9 +652,15 @@ export async function findLoginUser(identifier, tenant = "") {
       SELECT u.*
       FROM users u
       JOIN tenants t ON t.id = u.tenant_id
-      WHERE t.slug = ? AND u.active = 1 AND (lower(u.username) = ? OR lower(u.email) = ?)
+      WHERE (t.slug = ? OR EXISTS (
+        SELECT 1
+        FROM tenant_domains d
+        WHERE d.tenant_id = t.id AND lower(d.domain) = ?
+      ))
+        AND u.active = 1
+        AND (lower(u.username) = ? OR lower(u.email) = ?)
       LIMIT 1
-    `).get(slug, normalized, normalized);
+    `).get(slug, slug, normalized, normalized);
   }
   return await db.prepare(`
     SELECT *

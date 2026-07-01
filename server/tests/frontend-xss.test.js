@@ -120,3 +120,19 @@ test("services and users actions keep working through shared action handlers", a
   assert.match(usersRenderer, /data-copy-invite/);
   assert.match(usersRenderer, /data-revoke-invite/);
 });
+
+test("login form exposes clinic identifier and platform tenant deactivate action", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const loginStart = source.indexOf("document.getElementById(\"loginForm\")");
+  const loginEnd = source.indexOf("async function renderAcceptInvitation", loginStart);
+  const loginRenderer = source.slice(loginStart, loginEnd);
+  const platformStart = source.indexOf("function platformClinicRow");
+  const platformEnd = source.indexOf("function renderPlatformClients", platformStart);
+  const platformRenderer = source.slice(platformStart, platformEnd);
+
+  assert.match(loginRenderer, /clinicIdentifier/);
+  assert.match(loginRenderer, /מזהה מרפאה/);
+  assert.match(loginRenderer, /معرّف العيادة/);
+  assert.match(platformRenderer, /data-platform-tenant-deactivate/);
+  assert.match(source, /\/api\/platform\/tenants\/\$\{button\.dataset\.platformTenantDeactivate\}/);
+});

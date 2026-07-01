@@ -52,7 +52,7 @@ export async function platformTenants() {
 }
 
 export async function findTenant(tenantId) {
-  return db.prepare("SELECT id FROM tenants WHERE id = ?").get(tenantId);
+  return db.prepare("SELECT id, status, plan FROM tenants WHERE id = ?").get(tenantId);
 }
 
 export async function latestSubscription(tenantId) {
@@ -75,4 +75,20 @@ export async function updateTenantPlanStatus(tenantId, plan, status) {
 
 export async function auditPlatformTenantUpdate(user, tenantId, plan, status) {
   await audit(user.id, "platform_update_tenant", "tenants", tenantId, { tenantId: user.tenantId, targetTenantId: tenantId, plan, status });
+}
+
+export async function deactivateTenant(tenantId) {
+  await db.prepare("UPDATE tenants SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(tenantId);
+  await db.prepare(`
+    UPDATE subscriptions
+    SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+    WHERE tenant_id = ?
+  `).run(tenantId);
+}
+
+export async function auditPlatformTenantDeactivate(user, tenantId) {
+  await audit(user.id, "platform_deactivate_tenant", "tenants", tenantId, {
+    tenantId: user.tenantId,
+    targetTenantId: tenantId,
+  });
 }

@@ -4,8 +4,10 @@ import { config } from "../../config.js";
 import { checkDatabaseConnection, databaseEngine } from "../../db.js";
 import { analyzeDiskUsagePaths } from "../../shared/monitoring/disk-usage.js";
 import {
+  auditPlatformTenantDeactivate,
   auditPlatformTenantUpdate,
   createSubscription,
+  deactivateTenant,
   findTenant,
   latestSubscription,
   planCatalog,
@@ -118,5 +120,19 @@ export async function updatePlatformTenant(user, tenantId, body) {
 
   await updateTenantPlanStatus(tenantId, plan, status);
   await auditPlatformTenantUpdate(user, tenantId, plan, status);
+  return { status: 200, body: { tenants: await platformTenants() } };
+}
+
+export async function deactivatePlatformTenant(user, tenantId) {
+  if (!tenantId) return { status: 400, body: { error: "Valid tenant is required." } };
+  if (Number(tenantId) === 1) {
+    return { status: 400, body: { error: "Default tenant cannot be deactivated." } };
+  }
+
+  const tenant = await findTenant(tenantId);
+  if (!tenant) return { status: 404, body: { error: "Tenant not found" } };
+
+  await deactivateTenant(tenantId);
+  await auditPlatformTenantDeactivate(user, tenantId);
   return { status: 200, body: { tenants: await platformTenants() } };
 }

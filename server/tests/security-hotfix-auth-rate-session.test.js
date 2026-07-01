@@ -101,13 +101,13 @@ test("route rate limits block repeated requests and ignore spoofed forwarded IP 
   for (const forwardedFor of ["198.51.100.1", "198.51.100.2", "198.51.100.3", "198.51.100.4", "198.51.100.5"]) {
     const response = await anonymous.post("/api/login", {
       headers: { "x-forwarded-for": forwardedFor },
-      body: { username: "rate-limit-user", password: "wrong-password" },
+      body: { username: "rate-limit-user", password: "wrong-password", clinicIdentifier: "demo" },
     });
     assert.equal(response.status, 401);
   }
   const blockedLogin = await anonymous.post("/api/login", {
     headers: { "x-forwarded-for": "198.51.100.6" },
-    body: { username: "rate-limit-user", password: "wrong-password" },
+    body: { username: "rate-limit-user", password: "wrong-password", clinicIdentifier: "demo" },
   });
   assert.equal(blockedLogin.status, 429);
   assert.equal(typeof blockedLogin.body.error, "string");

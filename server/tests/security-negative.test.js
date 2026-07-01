@@ -29,10 +29,10 @@ test("authentication negatives preserve unauthorized boundaries", async () => {
   const client = createHttpClient(clinicServer.baseUrl);
 
   assert.equal((await client.post("/api/login", {
-    body: { username: "admin", password: "wrong-password" },
+    body: { username: "admin", password: "wrong-password", clinicIdentifier: "demo" },
   })).status, 401);
   assert.equal((await client.post("/api/login", {
-    body: { username: "unknown-safe-step-105", password: "wrong-password" },
+    body: { username: "unknown-safe-step-105", password: "wrong-password", clinicIdentifier: "demo" },
   })).status, 401);
 
   const invalidCookie = await client.get("/api/bootstrap", {
@@ -41,7 +41,7 @@ test("authentication negatives preserve unauthorized boundaries", async () => {
   assert.equal(invalidCookie.status, 401);
 
   const login = await client.post("/api/login", {
-    body: { username: "admin", password: "ChangeMe123!" },
+    body: { username: "admin", password: "ChangeMe123!", clinicIdentifier: "demo" },
   });
   assert.equal(login.status, 200);
   assert.equal((await client.post("/api/logout")).status, 200);
