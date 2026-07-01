@@ -348,9 +348,13 @@ function bindPageActions() {
   document.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openForm(button.dataset.edit, Number(button.dataset.id))));
   document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirm(state.lang === "he" ? "האם למחוק?" : "هل تريد الحذف؟")) return;
-    await api(`/api/${button.dataset.delete}/${button.dataset.id}`, { method: "DELETE" });
-    await loadData();
-    renderApp();
+    try {
+      await api(`/api/${button.dataset.delete}/${button.dataset.id}`, { method: "DELETE" });
+      await loadData();
+      renderApp();
+    } catch (err) {
+      showCenterError(localizedError(err));
+    }
   }));
   document.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("input", () => {
     state.filters[input.dataset.filter] = input.value;

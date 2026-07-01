@@ -96,3 +96,27 @@ test("client profile exposes controlled note action and limits visible CRM event
   assert.match(profileRenderer, /hiddenCrmEvents/);
   assert.match(profileRenderer, /details><summary/);
 });
+
+test("services and users actions keep working through shared action handlers", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const actionStart = source.indexOf("function bindPageActions");
+  const actionEnd = source.indexOf("async function boot", actionStart);
+  const actions = source.slice(actionStart, actionEnd);
+  const restoredStart = source.indexOf("function bindRestoredSectionActions");
+  const restoredEnd = source.indexOf("function openConsentUploadModal", restoredStart);
+  const restoredActions = source.slice(restoredStart, restoredEnd);
+  const usersStart = source.lastIndexOf("renderTeamUsers = function");
+  const usersEnd = source.indexOf("renderCrm = function", usersStart);
+  const usersRenderer = source.slice(usersStart, usersEnd);
+
+  assert.match(actions, /\[data-new\]/);
+  assert.match(actions, /\[data-edit\]/);
+  assert.match(actions, /\[data-delete\]/);
+  assert.match(actions, /showCenterError\(localizedError\(err\)\)/);
+  assert.match(actions, /bindRestoredSectionActions\(\)/);
+  assert.match(restoredActions, /inviteUserForm/);
+  assert.match(restoredActions, /\/api\/invitations/);
+  assert.match(usersRenderer, /inviteUserForm/);
+  assert.match(usersRenderer, /data-copy-invite/);
+  assert.match(usersRenderer, /data-revoke-invite/);
+});

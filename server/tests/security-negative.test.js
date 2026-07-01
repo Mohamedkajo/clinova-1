@@ -58,10 +58,19 @@ test("clinic and platform roles remain separated", async () => {
   const { client: therapist } = await loginAs(clinicServer.baseUrl, "sara");
   assert.equal((await therapist.get("/api/audit")).status, 403);
   assert.equal((await therapist.get("/api/users")).status, 403);
+  assert.equal((await therapist.delete("/api/services/1")).status, 403);
+  assert.equal((await therapist.post("/api/invitations", {
+    body: { email: "therapist-invite@example.test", name: "Therapist Invite", role: "reception" },
+  })).status, 403);
 
   const { client: reception } = await loginAs(clinicServer.baseUrl, "reception");
   assert.equal((await reception.get("/api/audit")).status, 403);
   assert.equal((await reception.get("/api/reports")).status, 403);
+  assert.equal((await reception.delete("/api/services/1")).status, 403);
+  assert.equal((await reception.delete("/api/users/1")).status, 403);
+  assert.equal((await reception.post("/api/invitations", {
+    body: { email: "reception-invite@example.test", name: "Reception Invite", role: "therapist" },
+  })).status, 403);
 
   const { client: clinicAdmin } = await loginAs(clinicServer.baseUrl, "admin");
   const clinicForbidden = [

@@ -1,6 +1,7 @@
 import { hashPassword } from "../security.js";
 import {
   auditUser,
+  countActiveClinicAdmins,
   createUser,
   deactivateUser,
   deleteUserSessions,
@@ -111,9 +112,18 @@ export async function editUser(user, id, body) {
 }
 
 export async function removeUser(user, id) {
+  if (Number(id) === Number(user.id)) {
+    return { status: 400, body: { error: "Current user cannot be deactivated." } };
+  }
   const currentRow = await findManagedUser(id, user.tenantId);
   if (!currentRow) return { status: 404, body: { error: "User not found." } };
   if (currentRow.isPlatformOwner) return { status: 403, body: { error: "Platform owner cannot be managed from clinic users." } };
+  if (currentRow.role === "admin" && Number(currentRow.active) === 1) {
+    const activeAdmins = await countActiveClinicAdmins(user.tenantId);
+    if (activeAdmins <= 1) {
+      return { status: 400, body: { error: "At least one active admin is required." } };
+    }
+  }
 
   await deactivateUser(id, user.tenantId);
   await auditUser(user.id, "deactivate", id, user.tenantId);

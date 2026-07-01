@@ -202,6 +202,25 @@ test("clinic CRUD workflow uses disposable records and archives supported record
   assert.equal((await client.get(`/api/invitations/${invitationToken}`)).status, 200);
   assert.equal((await client.delete(`/api/invitations/${invitationId}`)).status, 200);
 
+  const adminUser = bootstrap.body.users.find((user) => user.username === "admin");
+  assert.ok(adminUser?.id);
+  const deleteSelf = await client.delete(`/api/users/${adminUser.id}`);
+  assert.equal(deleteSelf.status, 400);
+  assert.deepEqual(deleteSelf.body, { error: "Current user cannot be deactivated." });
+
+  const userCreate = await client.post("/api/users", {
+    body: {
+      username: `safe-step-184-user-${suffix}`,
+      email: `safe-step-184-user-${suffix}@example.test`,
+      password: "ChangeMe123!",
+      name: "Safe Step Managed User",
+      role: "reception",
+    },
+  });
+  assert.equal(userCreate.status, 201);
+  assert.equal((await client.delete(`/api/users/${userCreate.body.id}`)).status, 200);
+  assert.ok((await client.get("/api/users")).body.some((item) => item.id === userCreate.body.id && Number(item.active) === 0));
+
   const feedbackCreate = await client.post("/api/feedback", {
     body: { appointmentId },
   });

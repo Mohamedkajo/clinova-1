@@ -14,7 +14,7 @@ export async function createUser(tenantId, values) {
 }
 
 export async function findManagedUser(id, tenantId) {
-  return await db.prepare("SELECT email, is_platform_owner AS isPlatformOwner FROM users WHERE id = ? AND tenant_id = ?")
+  return await db.prepare("SELECT id, email, role, active, is_platform_owner AS isPlatformOwner FROM users WHERE id = ? AND tenant_id = ?")
     .get(id, tenantId);
 }
 
@@ -34,6 +34,18 @@ export async function deleteUserSessions(id, tenantId) {
 export async function deactivateUser(id, tenantId) {
   await db.prepare("UPDATE users SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
     .run(id, tenantId);
+}
+
+export async function countActiveClinicAdmins(tenantId) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM users
+    WHERE tenant_id = ?
+      AND role = 'admin'
+      AND active = 1
+      AND COALESCE(is_platform_owner, 0) = 0
+  `).get(tenantId);
+  return Number(row?.count || 0);
 }
 
 export async function tenantBillingSnapshot(tenantId) {
