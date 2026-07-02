@@ -8,14 +8,24 @@ function digitsOnly(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-function searchScore(text, query, phone = "") {
+export function searchScore(text, query, phone = "") {
   const source = String(text || "").toLowerCase();
   const needle = String(query || "").toLowerCase();
   const phoneNeedle = digitsOnly(query);
   let score = 0;
-  if (source.includes(needle)) score += source.startsWith(needle) ? 80 : 45;
-  if (phoneNeedle && digitsOnly(phone).includes(phoneNeedle)) score += 70;
-  for (const part of needle.split(/\s+/).filter(Boolean)) if (source.includes(part)) score += 12;
+  const words = source.split(/\s+/).filter(Boolean);
+  if (source === needle) score += 140;
+  if (words.some((word) => word === needle)) score += 110;
+  if (source.startsWith(needle)) score += 90;
+  if (words.some((word) => word.startsWith(needle))) score += 70;
+  if (source.includes(needle)) score += 45 + Math.min(needle.length, 20);
+  if (phoneNeedle && digitsOnly(phone).includes(phoneNeedle)) score += 70 + Math.min(phoneNeedle.length, 20);
+  for (const part of needle.split(/\s+/).filter(Boolean)) {
+    if (part.length < 2) continue;
+    if (words.some((word) => word === part)) score += 18;
+    else if (words.some((word) => word.startsWith(part))) score += 14;
+    else if (source.includes(part)) score += 8;
+  }
   return score;
 }
 

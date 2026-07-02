@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { escapeAttribute, escapeHtml, safeSetText } from "../../client/safe-html.js";
+import { searchScore } from "../services/search.service.js";
 
 const payloads = [
   "<img src=x onerror=alert(1)>",
@@ -135,4 +136,43 @@ test("login form exposes clinic identifier and platform tenant deactivate action
   assert.match(loginRenderer, /معرّف العيادة/);
   assert.match(platformRenderer, /data-platform-tenant-deactivate/);
   assert.match(source, /\/api\/platform\/tenants\/\$\{button\.dataset\.platformTenantDeactivate\}/);
+});
+
+test("CSV exports include UTF-8 BOM for Excel multilingual readability", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  assert.match(source, /new Blob\(\["\\uFEFF", csv\]/);
+  assert.match(source, /new Blob\(\["\\uFEFF", content\]/);
+});
+
+test("settings success and common error messages are readable", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  assert.match(source, /تم حفظ الإعدادات بنجاح/);
+  assert.match(source, /ההגדרות נשמרו בהצלחה/);
+  assert.match(source, /حدث خطأ\. حاول مرة أخرى\./);
+  assert.match(source, /אירעה שגיאה\. נסו שוב\./);
+  assert.match(source, /اسم المستخدم أو كلمة المرور غير صحيحة/);
+  assert.match(source, /שם המשתמש או הסיסמה שגויים/);
+  assert.match(source, /مطلوب معرّف العيادة/);
+  assert.match(source, /נדרש מזהה מרפאה/);
+});
+
+test("quick search hides on outside click without removing result click handlers", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  assert.match(source, /closeQuickSearchOnOutsideClick/);
+  assert.match(source, /wrapper\.contains\(event\.target\)/);
+  assert.match(source, /panel\?\.classList\.add\("hidden"\)/);
+  assert.match(source, /\[data-quick-profile\]/);
+  assert.match(source, /\[data-quick-appointment\]/);
+});
+
+test("search score narrows toward exact and prefix matches as query grows", () => {
+  const exact = searchScore("سارة خليل", "سارة");
+  const prefix = searchScore("سارة خليل", "سار");
+  const broad = searchScore("زيارة متابعة لسارة خليل", "سار");
+  const unrelated = searchScore("ليلى منصور", "سارة");
+
+  assert.ok(exact > prefix);
+  assert.ok(prefix > broad);
+  assert.equal(unrelated, 0);
+  assert.ok(searchScore("0501234567", "050123", "0501234567") > searchScore("0501234567", "050", "0501234567"));
 });

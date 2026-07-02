@@ -284,6 +284,48 @@ function showCenterError(message) {
   window.setTimeout(() => alert.remove(), 3000);
 }
 
+localizedError = function (err) {
+  const fallback = state.lang === "he" ? "אירעה שגיאה. נסו שוב." : "حدث خطأ. حاول مرة أخرى.";
+  if (!err?.message) return fallback;
+  const common = {
+    "Invalid username or password.": {
+      ar: "اسم المستخدم أو كلمة المرور غير صحيحة",
+      he: "שם המשתמש או הסיסמה שגויים",
+    },
+    "Clinic identifier is required.": {
+      ar: "مطلوب معرّف العيادة",
+      he: "נדרש מזהה מרפאה",
+    },
+    "Clinic identifier not found.": {
+      ar: "لم يتم العثور على معرّف العيادة",
+      he: "מזהה המרפאה לא נמצא",
+    },
+    "Permission denied": {
+      ar: "لا توجد صلاحية لتنفيذ هذه العملية",
+      he: "אין הרשאה לבצע פעולה זו",
+    },
+    "Not found": {
+      ar: "لم يتم العثور على السجل المطلوب",
+      he: "הרשומה המבוקשת לא נמצאה",
+    },
+    "Operation failed": {
+      ar: "فشلت العملية. حاول مرة أخرى.",
+      he: "הפעולה נכשלה. נסו שוב.",
+    },
+  };
+  return common[err.message]?.[state.lang] || err.message || fallback;
+}
+
+function successText(key) {
+  const messages = {
+    settingsSaved: {
+      ar: "تم حفظ الإعدادات بنجاح",
+      he: "ההגדרות נשמרו בהצלחה",
+    },
+  };
+  return messages[key]?.[state.lang] || messages[key]?.ar || "";
+}
+
 function parseBool(value) {
   return value === true || value === "true";
 }
@@ -1057,7 +1099,7 @@ function exportPlatformBillingCsv() {
     const value = key === "tenant" ? invoice.tenantName : invoice[key];
     return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
   }).join(","))].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -2677,7 +2719,13 @@ function bindRestoredSectionActions() {
     const data = new FormData(settingsForm);
     const body = Object.fromEntries(data);
     if (data.getAll("workDays").length) body.workDays = JSON.stringify(data.getAll("workDays").map(Number));
-    reloadAfter(() => api("/api/settings", { method: "PUT", body }));
+    api("/api/settings", { method: "PUT", body })
+      .then(loadData)
+      .then(() => {
+        showCenterError(successText("settingsSaved"));
+        renderApp();
+      })
+      .catch((err) => showCenterError(localizedError(err)));
   });
 
   const passwordForm = document.getElementById("passwordForm");
@@ -2778,6 +2826,7 @@ function bindRestoredSectionActions() {
 
   const quickSearch = document.getElementById("quickSearch");
   if (quickSearch) quickSearch.addEventListener("input", handleQuickSearch);
+  if (quickSearch) document.addEventListener("click", closeQuickSearchOnOutsideClick, { once: true });
   document.querySelectorAll("[data-quick-profile]").forEach((button) => button.addEventListener("click", () => openClientProfile(Number(button.dataset.quickProfile))));
   document.querySelectorAll("[data-quick-appointment]").forEach((button) => button.addEventListener("click", () => openForm("appointments", Number(button.dataset.quickAppointment))));
 }
@@ -2873,12 +2922,22 @@ function printGiftCard(id) {
 }
 
 function downloadTextFile(name, content) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = name;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function closeQuickSearchOnOutsideClick(event) {
+  const wrapper = document.querySelector(".quick-search");
+  const panel = document.getElementById("quickResults");
+  if (wrapper && !wrapper.contains(event.target)) {
+    panel?.classList.add("hidden");
+  } else if (document.getElementById("quickSearch")) {
+    document.addEventListener("click", closeQuickSearchOnOutsideClick, { once: true });
+  }
 }
 
 function exportClinicCsv(kind) {
