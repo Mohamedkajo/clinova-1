@@ -124,24 +124,36 @@ test("services and users actions keep working through shared action handlers", a
 
 test("login form exposes clinic identifier and platform tenant deactivate action", async () => {
   const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
-  const loginStart = source.indexOf("document.getElementById(\"loginForm\")");
-  const loginEnd = source.indexOf("async function renderAcceptInvitation", loginStart);
+  const loginStart = source.lastIndexOf("renderLogin = function");
+  const loginEnd = source.indexOf("function uiText", loginStart);
   const loginRenderer = source.slice(loginStart, loginEnd);
   const platformStart = source.indexOf("function platformClinicRow");
   const platformEnd = source.indexOf("function renderPlatformClients", platformStart);
   const platformRenderer = source.slice(platformStart, platformEnd);
 
-  assert.match(loginRenderer, /clinicIdentifier/);
-  assert.match(loginRenderer, /מזהה מרפאה/);
-  assert.match(loginRenderer, /معرّف العيادة/);
+  assert.match(loginRenderer, /name="clinicIdentifier"/);
+  assert.ok(loginRenderer.includes("\\u05de\\u05d6\\u05d4\\u05d4 \\u05de\\u05e8\\u05e4\\u05d0\\u05d4"));
+  assert.ok(loginRenderer.includes("\\u0645\\u0639\\u0631\\u0651\\u0641 \\u0627\\u0644\\u0639\\u064a\\u0627\\u062f\\u0629"));
   assert.match(platformRenderer, /data-platform-tenant-deactivate/);
   assert.match(source, /\/api\/platform\/tenants\/\$\{button\.dataset\.platformTenantDeactivate\}/);
 });
-
 test("CSV exports include UTF-8 BOM for Excel multilingual readability", async () => {
   const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
   assert.match(source, /new Blob\(\["\\uFEFF", csv\]/);
   assert.match(source, /new Blob\(\["\\uFEFF", content\]/);
+});
+
+test("final login renderer includes clinic identifier directly in form markup", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const loginStart = source.lastIndexOf("renderLogin = function");
+  const loginEnd = source.indexOf("function uiText", loginStart);
+  const loginRenderer = source.slice(loginStart, loginEnd);
+
+  assert.match(loginRenderer, /name="clinicIdentifier"/);
+  assert.match(loginRenderer, /autocomplete="organization"/);
+  assert.ok(loginRenderer.includes("\\u05de\\u05d6\\u05d4\\u05d4 \\u05de\\u05e8\\u05e4\\u05d0\\u05d4"));
+  assert.ok(loginRenderer.includes("\\u0645\\u0639\\u0631\\u0651\\u0641 \\u0627\\u0644\\u0639\\u064a\\u0627\\u062f\\u0629"));
+  assert.doesNotMatch(loginRenderer, /querySelector\("input\[name='clinicIdentifier'\]"\)/);
 });
 
 test("settings success and common error messages are readable", async () => {

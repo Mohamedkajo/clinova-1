@@ -549,21 +549,7 @@ function renderLoginLegacy(error = "") {
       </form>
     </main>
   `);
-  const loginForm = document.getElementById("loginForm");
-  const usernameInput = loginForm.querySelector("input[name='username']");
-  if (usernameInput && !loginForm.querySelector("input[name='clinicIdentifier']")) {
-    const clinicField = document.createElement("div");
-    clinicField.className = "field";
-    const clinicLabel = document.createElement("label");
-    clinicLabel.textContent = he ? "מזהה מרפאה" : "معرّف العيادة";
-    const clinicInput = document.createElement("input");
-    clinicInput.name = "clinicIdentifier";
-    clinicInput.autocomplete = "organization";
-    clinicInput.placeholder = "demo";
-    clinicField.append(clinicLabel, clinicInput);
-    usernameInput.closest(".field").before(clinicField);
-  }
-  loginForm.addEventListener("submit", async (event) => {
+  document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = Object.fromEntries(new FormData(event.currentTarget));
     try {
@@ -2686,7 +2672,34 @@ renderLogin = function (error = "") {
   const he = state.lang === "he";
   document.documentElement.lang = state.lang;
   document.documentElement.dir = "rtl";
-  mount(html`<main class="login"><form class="login-card" id="loginForm"><div class="brand"><img class="brand-logo" src="/logo.svg" alt="Clinova"><div><h1>Clinova</h1><div class="muted">${he ? "מערכת ניהול קליניקה" : "نظام إدارة العيادة"}</div></div></div>${error ? `<div class="alert">${escapeHtml(error)}</div>` : ""}<div class="field"><label>${he ? "שם משתמש" : "اسم المستخدم"}</label><input name="username" autocomplete="username" required></div><div class="field"><label>${he ? "סיסמה" : "كلمة المرور"}</label><input name="password" type="password" autocomplete="current-password" required></div><button class="btn" style="width:100%">${he ? "כניסה" : "دخول"}</button><div class="version-badge">v${escapeHtml(APP_VERSION)}</div></form></main>`);
+  mount(html`
+    <main class="login">
+      <form class="login-card" id="loginForm">
+        <div class="brand">
+          <img class="brand-logo" src="/logo.svg" alt="Clinova">
+          <div>
+            <h1>Clinova</h1>
+            <div class="muted">${he ? "\u05de\u05e2\u05e8\u05db\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc \u05e7\u05dc\u05d9\u05e0\u05d9\u05e7\u05d4" : "\u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0639\u064a\u0627\u062f\u0629"}</div>
+          </div>
+        </div>
+        ${error ? `<div class="alert">${escapeHtml(error)}</div>` : ""}
+        <div class="field">
+          <label>${he ? "\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9" : "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645"}</label>
+          <input name="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>${he ? "\u05de\u05d6\u05d4\u05d4 \u05de\u05e8\u05e4\u05d0\u05d4" : "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0639\u064a\u0627\u062f\u0629"}</label>
+          <input name="clinicIdentifier" autocomplete="organization">
+        </div>
+        <div class="field">
+          <label>${he ? "\u05e1\u05d9\u05e1\u05de\u05d4" : "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631"}</label>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn" style="width:100%">${he ? "\u05db\u05e0\u05d9\u05e1\u05d4" : "\u062f\u062e\u0648\u0644"}</button>
+        <div class="version-badge">v${escapeHtml(APP_VERSION)}</div>
+      </form>
+    </main>
+  `);
   document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
