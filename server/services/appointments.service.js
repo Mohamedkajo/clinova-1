@@ -22,12 +22,25 @@ function toMinutes(time) {
   return hours * 60 + minutes;
 }
 
-function localTodayIso() {
+function localNowParts() {
+  const configuredNow = process.env.CLINOVA_TEST_NOW;
+  const configuredMatch = typeof configuredNow === "string"
+    ? configuredNow.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/)
+    : null;
+  if (configuredMatch) {
+    return {
+      date: configuredMatch[1],
+      minutes: (Number(configuredMatch[2]) * 60) + Number(configuredMatch[3]),
+    };
+  }
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return {
+    date: `${year}-${month}-${day}`,
+    minutes: (now.getHours() * 60) + now.getMinutes(),
+  };
 }
 
 function validWorkTime(value, fallback) {
@@ -177,8 +190,9 @@ async function validateAppointmentWrite(user, id, values) {
   if (!await appointmentTherapistExists(values.therapistId, user.tenantId)) {
     return { status: 404, body: { error: "Therapist not found." } };
   }
-  if (values.date < localTodayIso()) {
-    return { status: 400, body: { error: "Appointment date cannot be in the past." } };
+  const now = localNowParts();
+  if (values.date < now.date || (values.date === now.date && toMinutes(values.time) < now.minutes)) {
+    return { status: 400, body: { error: "Appointment cannot be booked in the past", code: "APPOINTMENT_IN_PAST" } };
   }
 
   const settings = await clinicSettings(user.tenantId);
@@ -187,7 +201,7 @@ async function validateAppointmentWrite(user, id, values) {
   const appointmentStart = toMinutes(values.time);
   const appointmentEnd = appointmentStart + Number(service.duration || 0);
   if (appointmentStart < workStart || appointmentEnd > workEnd) {
-    return { status: 400, body: { error: "Appointment must be within clinic working hours." } };
+    return { status: 400, body: { error: "Appointment must be within clinic working hours", code: "APPOINTMENT_OUTSIDE_WORK_HOURS" } };
   }
 
   const conflict = await appointmentConflict({

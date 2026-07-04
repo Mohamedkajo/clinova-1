@@ -14,10 +14,15 @@ function isoDateOffset(days) {
   return date.toISOString().slice(0, 10);
 }
 
+function todayIso() {
+  return isoDateOffset(0);
+}
+
 before(async () => {
+  const fixedNow = `${todayIso()}T15:00`;
   [clinicServer, platformServer] = await Promise.all([
-    startTestServer(),
-    startTestServer({ initializationRuns: 2 }),
+    startTestServer({ envOverrides: { CLINOVA_TEST_NOW: fixedNow } }),
+    startTestServer({ envOverrides: { CLINOVA_TEST_NOW: fixedNow }, initializationRuns: 2 }),
   ]);
 });
 
@@ -583,19 +588,32 @@ test("appointment booking rejects past dates and times outside clinic working ho
     body: { ...appointmentBody, date: isoDateOffset(-1) },
   });
   assert.equal(pastDate.status, 400);
-  assert.deepEqual(pastDate.body, { error: "Appointment date cannot be in the past." });
+  assert.deepEqual(pastDate.body, { error: "Appointment cannot be booked in the past", code: "APPOINTMENT_IN_PAST" });
+
+  const earlierToday = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, date: todayIso(), time: "10:00" },
+  });
+  assert.equal(earlierToday.status, 400);
+  assert.deepEqual(earlierToday.body, { error: "Appointment cannot be booked in the past", code: "APPOINTMENT_IN_PAST" });
+
+  const laterToday = await clinicAdmin.post("/api/appointments", {
+    body: { ...appointmentBody, date: todayIso(), time: "16:00" },
+  });
+  assert.equal(laterToday.status, 201);
+  assert.ok(laterToday.body.id);
+  assert.equal((await clinicAdmin.delete(`/api/appointments/${laterToday.body.id}`)).status, 200);
 
   const beforeWorkday = await clinicAdmin.post("/api/appointments", {
     body: { ...appointmentBody, time: "08:00" },
   });
   assert.equal(beforeWorkday.status, 400);
-  assert.deepEqual(beforeWorkday.body, { error: "Appointment must be within clinic working hours." });
+  assert.deepEqual(beforeWorkday.body, { error: "Appointment must be within clinic working hours", code: "APPOINTMENT_OUTSIDE_WORK_HOURS" });
 
   const endsAfterWorkday = await clinicAdmin.post("/api/appointments", {
     body: { ...appointmentBody, time: "17:30" },
   });
   assert.equal(endsAfterWorkday.status, 400);
-  assert.deepEqual(endsAfterWorkday.body, { error: "Appointment must be within clinic working hours." });
+  assert.deepEqual(endsAfterWorkday.body, { error: "Appointment must be within clinic working hours", code: "APPOINTMENT_OUTSIDE_WORK_HOURS" });
 
   const validAppointment = await clinicAdmin.post("/api/appointments", {
     body: { ...appointmentBody, time: "11:00" },

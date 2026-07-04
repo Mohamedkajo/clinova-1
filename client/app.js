@@ -197,7 +197,7 @@ async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || "حدث خطأ");
-    error.code = data.error || "";
+    error.code = data.code || data.error || "";
     error.details = data.details || {};
     throw error;
   }
@@ -288,6 +288,36 @@ localizedError = function (err) {
   const fallback = state.lang === "he" ? "אירעה שגיאה. נסו שוב." : "حدث خطأ. حاول مرة أخرى.";
   if (!err?.message) return fallback;
   const common = {
+    APPOINTMENT_IN_PAST: {
+      ar: "\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u062c\u0632 \u0645\u0648\u0639\u062f \u0641\u064a \u0648\u0642\u062a \u0645\u0636\u0649",
+      he: "\u05d0\u05d9 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05e7\u05d1\u05d5\u05e2 \u05ea\u05d5\u05e8 \u05d1\u05d6\u05de\u05df \u05e9\u05db\u05d1\u05e8 \u05e2\u05d1\u05e8",
+      en: "Appointment cannot be booked in the past",
+    },
+    APPOINTMENT_OUTSIDE_WORK_HOURS: {
+      ar: "\u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0627\u0644\u0645\u0648\u0639\u062f \u0636\u0645\u0646 \u0633\u0627\u0639\u0627\u062a \u0639\u0645\u0644 \u0627\u0644\u0639\u064a\u0627\u062f\u0629",
+      he: "\u05d4\u05ea\u05d5\u05e8 \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d1\u05ea\u05d5\u05da \u05e9\u05e2\u05d5\u05ea \u05d4\u05e2\u05d1\u05d5\u05d3\u05d4 \u05e9\u05dc \u05d4\u05de\u05e8\u05e4\u05d0\u05d4",
+      en: "Appointment must be within clinic working hours",
+    },
+    "Appointment date cannot be in the past.": {
+      ar: "\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u062c\u0632 \u0645\u0648\u0639\u062f \u0641\u064a \u0648\u0642\u062a \u0645\u0636\u0649",
+      he: "\u05d0\u05d9 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05e7\u05d1\u05d5\u05e2 \u05ea\u05d5\u05e8 \u05d1\u05d6\u05de\u05df \u05e9\u05db\u05d1\u05e8 \u05e2\u05d1\u05e8",
+      en: "Appointment cannot be booked in the past",
+    },
+    "Appointment cannot be booked in the past": {
+      ar: "\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u062c\u0632 \u0645\u0648\u0639\u062f \u0641\u064a \u0648\u0642\u062a \u0645\u0636\u0649",
+      he: "\u05d0\u05d9 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05e7\u05d1\u05d5\u05e2 \u05ea\u05d5\u05e8 \u05d1\u05d6\u05de\u05df \u05e9\u05db\u05d1\u05e8 \u05e2\u05d1\u05e8",
+      en: "Appointment cannot be booked in the past",
+    },
+    "Appointment must be within clinic working hours.": {
+      ar: "\u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0627\u0644\u0645\u0648\u0639\u062f \u0636\u0645\u0646 \u0633\u0627\u0639\u0627\u062a \u0639\u0645\u0644 \u0627\u0644\u0639\u064a\u0627\u062f\u0629",
+      he: "\u05d4\u05ea\u05d5\u05e8 \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d1\u05ea\u05d5\u05da \u05e9\u05e2\u05d5\u05ea \u05d4\u05e2\u05d1\u05d5\u05d3\u05d4 \u05e9\u05dc \u05d4\u05de\u05e8\u05e4\u05d0\u05d4",
+      en: "Appointment must be within clinic working hours",
+    },
+    "Appointment must be within clinic working hours": {
+      ar: "\u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0627\u0644\u0645\u0648\u0639\u062f \u0636\u0645\u0646 \u0633\u0627\u0639\u0627\u062a \u0639\u0645\u0644 \u0627\u0644\u0639\u064a\u0627\u062f\u0629",
+      he: "\u05d4\u05ea\u05d5\u05e8 \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d1\u05ea\u05d5\u05da \u05e9\u05e2\u05d5\u05ea \u05d4\u05e2\u05d1\u05d5\u05d3\u05d4 \u05e9\u05dc \u05d4\u05de\u05e8\u05e4\u05d0\u05d4",
+      en: "Appointment must be within clinic working hours",
+    },
     "Invalid username or password.": {
       ar: "اسم المستخدم أو كلمة المرور غير صحيحة",
       he: "שם המשתמש או הסיסמה שגויים",
@@ -313,7 +343,7 @@ localizedError = function (err) {
       he: "הפעולה נכשלה. נסו שוב.",
     },
   };
-  return common[err.message]?.[state.lang] || err.message || fallback;
+  return common[err.code]?.[state.lang] || common[err.message]?.[state.lang] || err.message || fallback;
 }
 
 function successText(key) {

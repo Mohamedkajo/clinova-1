@@ -168,6 +168,21 @@ test("settings success and common error messages are readable", async () => {
   assert.match(source, /נדרש מזהה מרפאה/);
 });
 
+test("appointment validation errors are mapped to localized frontend messages", async () => {
+  const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("localizedError = function");
+  const end = source.indexOf("function successText", start);
+  const errors = source.slice(start, end);
+
+  assert.match(source, /error\.code = data\.code \|\| data\.error \|\| ""/);
+  assert.match(errors, /APPOINTMENT_IN_PAST/);
+  assert.match(errors, /APPOINTMENT_OUTSIDE_WORK_HOURS/);
+  assert.match(errors, /\\u05d0\\u05d9 \\u05d0\\u05e4\\u05e9\\u05e8 \\u05dc\\u05e7\\u05d1\\u05d5\\u05e2 \\u05ea\\u05d5\\u05e8 \\u05d1\\u05d6\\u05de\\u05df \\u05e9\\u05db\\u05d1\\u05e8 \\u05e2\\u05d1\\u05e8/);
+  assert.match(errors, /\\u0644\\u0627 \\u064a\\u0645\\u0643\\u0646 \\u062d\\u062c\\u0632 \\u0645\\u0648\\u0639\\u062f \\u0641\\u064a \\u0648\\u0642\\u062a \\u0645\\u0636\\u0649/);
+  assert.match(errors, /Appointment cannot be booked in the past/);
+  assert.match(errors, /Appointment must be within clinic working hours/);
+});
+
 test("quick search hides on outside click without removing result click handlers", async () => {
   const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
   assert.match(source, /closeQuickSearchOnOutsideClick/);
