@@ -2466,3 +2466,431 @@ html[dir="ltr"] .foundation-login-card { border-radius: 0 var(--radius) var(--ra
 .feature-row small {
   white-space: pre-wrap;
 }
+
+/* Sprint 1.2: appointment workspace */
+.appointment-workspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.workspace-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(360px, auto) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+}
+
+.workspace-view-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspace-view-toggle button {
+  min-width: 74px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workspace-view-toggle button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.workspace-date-navigation {
+  display: grid;
+  grid-template-columns: auto auto minmax(145px, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.workspace-date-navigation input,
+.workspace-filter select {
+  min-height: 40px;
+}
+
+.workspace-range-title {
+  align-self: center;
+  color: var(--text);
+  direction: ltr;
+  font-size: 15px;
+  unicode-bidi: isolate;
+}
+
+.workspace-filters {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.workspace-filter {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 310px);
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+
+.workspace-calendar {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.workspace-empty-banner {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workspace-week-board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(105px, 1fr));
+  min-width: 735px;
+}
+
+.workspace-desktop-calendar {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.workspace-week-day {
+  min-height: 520px;
+  border-inline-end: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.workspace-week-day:last-child {
+  border-inline-end: 0;
+}
+
+.workspace-week-day > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 54px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.workspace-week-day > header strong {
+  color: var(--text);
+}
+
+.workspace-week-day > div {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+}
+
+.workspace-day-empty,
+.workspace-empty {
+  margin: 0;
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.workspace-appointment {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 76px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--primary-light);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06);
+}
+
+.workspace-appointment:hover,
+.workspace-appointment:focus-visible {
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow);
+  outline: none;
+}
+
+.workspace-appointment.done { border-inline-start-color: var(--success); }
+.workspace-appointment.cancelled { border-inline-start-color: var(--danger); opacity: .72; }
+.workspace-appointment strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-appointment span,
+.workspace-appointment small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.workspace-appointment .appointment-time { color: var(--text); font-weight: 800; }
+
+.workspace-day-timeline {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  min-width: 540px;
+  padding: 0 12px 16px;
+}
+
+.workspace-time-axis {
+  position: relative;
+  margin-top: 48px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-time-axis span {
+  position: absolute;
+  inset-inline: 0 8px;
+  transform: translateY(-50%);
+  text-align: end;
+}
+
+.workspace-day-columns {
+  display: grid;
+  min-width: 0;
+}
+
+.workspace-staff-column {
+  min-width: 0;
+  border-inline-start: 1px solid var(--line);
+}
+
+.workspace-staff-column > header {
+  display: grid;
+  height: 48px;
+  place-items: center;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.workspace-time-lane {
+  position: relative;
+  overflow: hidden;
+}
+
+.workspace-hour-line,
+.workspace-now-line {
+  position: absolute;
+  z-index: 0;
+  inset-inline: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.workspace-now-line {
+  z-index: 2;
+  height: 2px;
+  background: var(--danger);
+}
+
+.workspace-now-line::before {
+  position: absolute;
+  inset-inline-start: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  content: "";
+}
+
+.timeline-appointment {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 6px;
+  width: auto;
+  min-height: 48px;
+  overflow: hidden;
+}
+
+.workspace-mobile-agenda { display: none; }
+
+.workspace-queue {
+  position: sticky;
+  top: 88px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.workspace-queue > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.workspace-queue h2,
+.workspace-mobile-agenda h2 { margin: 0; font-size: 17px; }
+.workspace-queue header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.workspace-queue > header > strong { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--primary-pale); color: var(--primary); }
+.workspace-queue-list { display: grid; }
+
+.workspace-queue-list > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-queue-list > button:hover,
+.workspace-queue-list > button:focus-visible { background: var(--surface); outline: none; }
+.workspace-queue-list > button:last-child { border-bottom: 0; }
+.workspace-queue-list > button div { display: grid; min-width: 0; }
+.workspace-queue-list > button div > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-queue-list span,
+.workspace-queue-list small { color: var(--muted); font-size: 12px; }
+.queue-time { color: var(--text) !important; font-weight: 800; }
+.workspace-queue-empty { padding: 28px 18px; color: var(--muted); text-align: center; }
+
+.workspace-boundary,
+.appointment-detail-boundary {
+  display: grid;
+  min-height: 240px;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+  text-align: center;
+}
+
+.boundary-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--line);
+  border-top-color: var(--primary-light);
+  border-radius: 50%;
+  animation: workspace-spin .8s linear infinite;
+}
+
+@keyframes workspace-spin { to { transform: rotate(360deg); } }
+
+.appointment-drawer-layer {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  justify-items: end;
+}
+
+html[dir="ltr"] .appointment-drawer-layer { justify-items: start; }
+
+.appointment-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, .42);
+}
+
+.appointment-drawer {
+  position: relative;
+  z-index: 1;
+  width: min(430px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.appointment-drawer > header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.appointment-drawer h2 { margin: 0; font-size: 19px; }
+.appointment-drawer .icon-button { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); cursor: pointer; }
+.appointment-detail-content { display: grid; gap: 20px; padding: 20px; }
+.appointment-detail-patient { display: grid; gap: 4px; padding: 16px; border-radius: var(--radius-sm); background: var(--surface); }
+.appointment-detail-patient span,
+.appointment-detail-patient small { color: var(--muted); }
+.appointment-detail-patient strong { font-size: 19px; }
+.appointment-detail-content dl { display: grid; margin: 0; }
+.appointment-detail-content dl > div { display: grid; grid-template-columns: minmax(110px, .8fr) minmax(0, 1.2fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.appointment-detail-content dt { color: var(--muted); }
+.appointment-detail-content dd { margin: 0; color: var(--text); font-weight: 700; }
+.appointment-detail-notes { padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.appointment-detail-notes h3 { margin: 0 0 8px; font-size: 15px; }
+.appointment-detail-notes p { margin: 0; color: var(--muted); white-space: pre-wrap; }
+
+@media (max-width: 1100px) {
+  .workspace-toolbar { grid-template-columns: auto minmax(340px, 1fr); }
+  .workspace-range-title { grid-column: 1 / -1; }
+  .workspace-layout { grid-template-columns: minmax(0, 1fr) minmax(245px, 280px); }
+}
+
+@media (max-width: 820px) {
+  .workspace-layout { grid-template-columns: minmax(0, 1fr); }
+  .workspace-queue { position: static; }
+}
+
+@media (max-width: 700px) {
+  .workspace-toolbar { grid-template-columns: 1fr; align-items: stretch; padding: 12px; }
+  .workspace-view-toggle { width: 100%; }
+  .workspace-view-toggle button { min-height: 44px; }
+  .workspace-date-navigation { grid-template-columns: repeat(3, 1fr); }
+  .workspace-date-navigation input { grid-column: 1 / -1; grid-row: 1; width: 100%; min-height: 44px; }
+  .workspace-date-navigation .btn { min-height: 44px; padding-inline: 8px; }
+  .workspace-range-title { grid-column: auto; }
+  .workspace-filters { grid-column: auto; grid-template-columns: 1fr; }
+  .workspace-filter select { min-height: 44px; }
+  .workspace-desktop-calendar { display: none; }
+  .workspace-mobile-agenda { display: grid; gap: 16px; padding: 14px; }
+  .workspace-mobile-agenda section { display: grid; gap: 8px; }
+  .workspace-mobile-agenda h3 { margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .agenda-appointment { min-height: 82px; }
+  .workspace-queue-list > button { min-height: 76px; }
+  .appointment-drawer { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boundary-spinner { animation: none; }
+}

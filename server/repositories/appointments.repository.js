@@ -15,6 +15,34 @@ export async function listAppointmentRows(user) {
       .all(user.tenantId);
 }
 
+export async function findAppointmentRow(user, id) {
+  const base = `
+    SELECT a.*, c.fname, c.lname, c.phone, s.name AS service_name, s.duration, s.price, u.name AS therapist_name
+    FROM appointments a
+    JOIN clients c ON c.id = a.client_id
+    JOIN services s ON s.id = a.service_id
+    JOIN users u ON u.id = a.therapist_id
+    WHERE a.id = ? AND a.tenant_id = ? AND a.active = 1
+  `;
+  return user.role === "therapist"
+    ? await db.prepare(`${base} AND a.therapist_id = ?`).get(id, user.tenantId, user.id)
+    : await db.prepare(base).get(id, user.tenantId);
+}
+
+export async function listQueuedAppointmentRows(user, date) {
+  const base = `
+    SELECT a.*, c.fname, c.lname, c.phone, s.name AS service_name, s.duration, s.price, u.name AS therapist_name
+    FROM appointments a
+    JOIN clients c ON c.id = a.client_id
+    JOIN services s ON s.id = a.service_id
+    JOIN users u ON u.id = a.therapist_id
+    WHERE a.tenant_id = ? AND a.active = 1 AND a.date = ? AND a.status = 'pending'
+  `;
+  return user.role === "therapist"
+    ? await db.prepare(`${base} AND a.therapist_id = ? ORDER BY a.time, a.id`).all(user.tenantId, date, user.id)
+    : await db.prepare(`${base} ORDER BY a.time, a.id`).all(user.tenantId, date);
+}
+
 export async function findServiceForConflict(serviceId, tenantId) {
   return await db.prepare("SELECT duration, category_id, name FROM services WHERE id = ? AND tenant_id = ?")
     .get(serviceId, tenantId);

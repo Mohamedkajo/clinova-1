@@ -1,5 +1,11 @@
 import { escapeAttribute, escapeHtml } from "./safe-html.js";
 import {
+  emptyWorkspaceFilters,
+  moveWorkspaceDate,
+  renderAppointmentDetails,
+  renderAppointmentWorkspace,
+} from "./appointment-workspace.js";
+import {
   directionForLanguage,
   hashForRoute,
   localizedAuthError,
@@ -18,6 +24,12 @@ const state = {
   filters: { appointments: "", appointmentStatus: "all", clients: "" },
   calendarView: "week",
   calendarDate: new Date().toISOString().slice(0, 10),
+  appointmentWorkspace: {
+    status: "idle",
+    error: "",
+    queue: [],
+    filters: { ...emptyWorkspaceFilters },
+  },
   quickSearch: "",
   quickResults: null,
   lang: ["he", "ar", "en"].includes(localStorage.getItem("clinova-lang")) ? localStorage.getItem("clinova-lang") : "he",
@@ -422,6 +434,51 @@ function syncClientSearch(form, requireValue = true) {
   return !requireValue || Boolean(hidden?.value);
 }
 
+async function refreshAppointmentWorkspace({ renderLoading = true } = {}) {
+  if (!state.user || state.user.platformOwner || state.page !== "calendar") return;
+  state.appointmentWorkspace.status = "loading";
+  state.appointmentWorkspace.error = "";
+  if (renderLoading) renderApp();
+  try {
+    const [appointments, queue] = await Promise.all([
+      api("/api/appointments"),
+      api(`/api/appointments/queue?date=${encodeURIComponent(state.calendarDate)}`),
+    ]);
+    state.data.appointments = appointments;
+    state.appointmentWorkspace.queue = Array.isArray(queue?.items) ? queue.items : [];
+    state.appointmentWorkspace.status = "ready";
+  } catch (error) {
+    state.appointmentWorkspace.status = "error";
+    state.appointmentWorkspace.error = localizedError(error);
+  }
+  if (state.page === "calendar") renderApp();
+}
+
+function closeAppointmentDrawer() {
+  const root = document.getElementById("modalRoot");
+  if (root) root.innerHTML = "";
+}
+
+function bindAppointmentDrawer() {
+  document.querySelectorAll("[data-close-appointment-drawer]").forEach((button) => button.addEventListener("click", closeAppointmentDrawer));
+  const patientButton = document.querySelector("[data-appointment-patient]");
+  if (patientButton) patientButton.addEventListener("click", () => openClientProfile(Number(patientButton.dataset.appointmentPatient)));
+}
+
+async function openAppointmentDetails(id) {
+  const root = document.getElementById("modalRoot");
+  if (!root) return;
+  root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "loading" });
+  bindAppointmentDrawer();
+  try {
+    const appointment = await api(`/api/appointments/${id}`);
+    root.innerHTML = renderAppointmentDetails({ language: state.lang, appointment });
+  } catch (error) {
+    root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "error", error: localizedError(error) });
+  }
+  bindAppointmentDrawer();
+}
+
 function bindPageActions() {
   const languageSelect = document.getElementById("languageSelect");
   if (languageSelect) languageSelect.addEventListener("change", () => {
@@ -481,6 +538,31 @@ function bindPageActions() {
       showCenterError(err.message || "Calendar action failed");
     }
   }));
+  document.querySelectorAll("[data-workspace-view]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarView = button.dataset.workspaceView;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-workspace-move]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarDate = moveWorkspaceDate(state.calendarDate, state.calendarView, Number(button.dataset.workspaceMove || 0));
+    void refreshAppointmentWorkspace();
+  }));
+  const workspaceToday = document.querySelector("[data-workspace-today]");
+  if (workspaceToday) workspaceToday.addEventListener("click", () => {
+    state.calendarDate = new Date().toISOString().slice(0, 10);
+    void refreshAppointmentWorkspace();
+  });
+  const workspaceDate = document.querySelector("[data-workspace-date]");
+  if (workspaceDate) workspaceDate.addEventListener("change", () => {
+    state.calendarDate = workspaceDate.value || new Date().toISOString().slice(0, 10);
+    void refreshAppointmentWorkspace();
+  });
+  document.querySelectorAll("[data-workspace-filter]").forEach((input) => input.addEventListener("change", () => {
+    state.appointmentWorkspace.filters[input.dataset.workspaceFilter] = input.value;
+    renderApp();
+  }));
+  const workspaceRetry = document.querySelector("[data-workspace-retry]");
+  if (workspaceRetry) workspaceRetry.addEventListener("click", () => void refreshAppointmentWorkspace());
+  document.querySelectorAll("[data-appointment-details]").forEach((button) => button.addEventListener("click", () => void openAppointmentDetails(Number(button.dataset.appointmentDetails))));
   document.querySelectorAll("[data-platform-tenant-form]").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const tenantId = form.dataset.platformTenantForm;
@@ -573,6 +655,7 @@ async function boot() {
   applyProtectedRoute({ replace: true, render: false });
   await loadData();
   renderApp();
+  if (state.page === "calendar") void refreshAppointmentWorkspace();
 }
 
 function renderLoginLegacy(error = "") {
@@ -2562,28 +2645,21 @@ renderAppointmentsHe = function () {
 }
 
 renderCalendarHe = function () {
-  const he = state.lang === "he";
-  state.calendarView = state.calendarView || "week";
+  state.calendarView = ["day", "week"].includes(state.calendarView) ? state.calendarView : "week";
   state.calendarDate = state.calendarDate || new Date().toISOString().slice(0, 10);
-  const days = calendarDays();
-  const therapists = calendarTherapists();
-  return html`
-    <div class="calendar-toolbar toolbar">
-      <div class="segmented">
-        ${["month", "week", "day"].map((view) => `<button type="button" class="${state.calendarView === view ? "active" : ""}" data-calendar-view="${view}">${he ? ({ month: "חודש", week: "שבוע", day: "יום" }[view]) : ({ month: "شهر", week: "أسبوع", day: "يوم" }[view])}</button>`).join("")}
-      </div>
-      <button type="button" class="btn secondary" data-calendar-move="-1">${he ? "הקודם" : "السابق"}</button>
-      <input type="date" data-calendar-date value="${state.calendarDate}">
-      <button type="button" class="btn secondary" data-calendar-move="1">${he ? "הבא" : "التالي"}</button>
-      <strong>${calendarRangeTitle()}</strong>
-    </div>
-    <div class="calendar-legend">
-      ${therapists.map((user) => `<span><strong>${escapeHtml(user.name || user.username)}</strong> ${escapeHtml(roleLabel(user.role))}</span>`).join("")}
-    </div>
-    <div class="card calendar-card">
-      ${state.calendarView === "month" ? renderMonthCalendar(days, he) : state.calendarView === "day" ? renderDayCalendar(days, therapists, he) : renderWeekCalendar(days, therapists, he)}
-    </div>
-  `;
+  return renderAppointmentWorkspace({
+    language: state.lang,
+    date: state.calendarDate,
+    view: state.calendarView,
+    appointments: state.data.appointments || [],
+    queue: state.appointmentWorkspace.queue || [],
+    users: state.data.users || [],
+    services: state.data.services || [],
+    filters: state.appointmentWorkspace.filters,
+    settings: state.data.settings || {},
+    status: state.appointmentWorkspace.status,
+    error: state.appointmentWorkspace.error,
+  });
 }
 
 renderClientsHe = function () {
@@ -2710,25 +2786,35 @@ function routeUrl(page) {
 function setProtectedRoute(page, options = {}) {
   const { replace = false, render = true } = options;
   const target = resolveProtectedRoute(hashForRoute(page), state.user);
+  const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   state.page = target.page;
+  if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   state.mobileNavOpen = false;
   history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(target.page));
   if (render) {
     if (target.page === "login") renderLogin();
-    else renderApp();
+    else {
+      renderApp();
+      if (target.page === "calendar") void refreshAppointmentWorkspace();
+    }
   }
 }
 
 function applyProtectedRoute(options = {}) {
   const { replace = false, render = true } = options;
   const target = resolveProtectedRoute(location.hash, state.user);
+  const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   state.page = target.page;
+  if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   state.mobileNavOpen = false;
   if (target.redirect) history.replaceState({}, "", routeUrl(target.page));
   else if (replace) history.replaceState({}, "", routeUrl(target.page));
   if (render) {
     if (target.page === "login") renderLogin();
-    else renderApp();
+    else {
+      renderApp();
+      if (target.page === "calendar") void refreshAppointmentWorkspace();
+    }
   }
 }
 
@@ -3842,6 +3928,10 @@ function renderFoundationError(error) {
 
 window.addEventListener("hashchange", () => applyProtectedRoute());
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector(".appointment-drawer")) {
+    closeAppointmentDrawer();
+    return;
+  }
   if (event.key === "Escape" && state.mobileNavOpen) {
     state.mobileNavOpen = false;
     renderApp();

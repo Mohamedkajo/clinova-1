@@ -7,10 +7,12 @@ import {
   auditAppointment,
   createAppointment,
   findConsentSignature,
+  findAppointmentRow,
   findServiceCategory,
   findServiceForConflict,
   listAppointmentRows,
   listConflictingAppointmentRows,
+  listQueuedAppointmentRows,
   listConsentTemplatesForCategory,
   updateAppointment,
 } from "../repositories/appointments.repository.js";
@@ -231,6 +233,23 @@ async function validateAppointmentWrite(user, id, values) {
 
 export async function getAppointments(user) {
   return { status: 200, body: (await listAppointmentRows(user)).map(appointmentFromRow) };
+}
+
+export async function getAppointment(user, id) {
+  const row = await findAppointmentRow(user, id);
+  if (!row) return { status: 404, body: { error: "Appointment not found." } };
+  return { status: 200, body: appointmentFromRow(row) };
+}
+
+export async function getAppointmentQueue(user, requestedDate = "") {
+  const date = requestedDate || localNowParts().date;
+  if (!isValidIsoDate(date)) {
+    return { status: 400, body: { error: "Valid queue date is required." } };
+  }
+  return {
+    status: 200,
+    body: { date, items: (await listQueuedAppointmentRows(user, date)).map(appointmentFromRow) },
+  };
 }
 
 export async function addAppointment(user, body) {
