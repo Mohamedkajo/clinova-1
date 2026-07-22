@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { translate as foundationText } from "../../client/foundation-shell.js";
 import { escapeAttribute, escapeHtml, safeSetText } from "../../client/safe-html.js";
 import { searchScore } from "../services/search.service.js";
 
@@ -132,8 +133,9 @@ test("login form exposes clinic identifier and platform tenant deactivate action
   const platformRenderer = source.slice(platformStart, platformEnd);
 
   assert.match(loginRenderer, /name="clinicIdentifier"/);
-  assert.ok(loginRenderer.includes("\\u05de\\u05d6\\u05d4\\u05d4 \\u05de\\u05e8\\u05e4\\u05d0\\u05d4"));
-  assert.ok(loginRenderer.includes("\\u0645\\u0639\\u0631\\u0651\\u0641 \\u0627\\u0644\\u0639\\u064a\\u0627\\u062f\\u0629"));
+  assert.match(loginRenderer, /foundationText\(state\.lang, "auth\.clinic"\)/);
+  assert.equal(foundationText("he", "auth.clinic"), "\u05de\u05d6\u05d4\u05d4 \u05e7\u05dc\u05d9\u05e0\u05d9\u05e7\u05d4");
+  assert.equal(foundationText("ar", "auth.clinic"), "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0639\u064a\u0627\u062f\u0629");
   assert.match(platformRenderer, /data-platform-tenant-deactivate/);
   assert.match(source, /\/api\/platform\/tenants\/\$\{button\.dataset\.platformTenantDeactivate\}/);
 });
@@ -151,8 +153,9 @@ test("final login renderer includes clinic identifier directly in form markup", 
 
   assert.match(loginRenderer, /name="clinicIdentifier"/);
   assert.match(loginRenderer, /autocomplete="organization"/);
-  assert.ok(loginRenderer.includes("\\u05de\\u05d6\\u05d4\\u05d4 \\u05de\\u05e8\\u05e4\\u05d0\\u05d4"));
-  assert.ok(loginRenderer.includes("\\u0645\\u0639\\u0631\\u0651\\u0641 \\u0627\\u0644\\u0639\\u064a\\u0627\\u062f\\u0629"));
+  assert.match(loginRenderer, /foundationText\(state\.lang, "auth\.clinic"\)/);
+  assert.equal(foundationText("he", "auth.clinic"), "\u05de\u05d6\u05d4\u05d4 \u05e7\u05dc\u05d9\u05e0\u05d9\u05e7\u05d4");
+  assert.equal(foundationText("ar", "auth.clinic"), "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0639\u064a\u0627\u062f\u0629");
   assert.doesNotMatch(loginRenderer, /querySelector\("input\[name='clinicIdentifier'\]"\)/);
 });
 

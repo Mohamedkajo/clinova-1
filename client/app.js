@@ -1,4 +1,15 @@
 import { escapeAttribute, escapeHtml } from "./safe-html.js";
+import {
+  directionForLanguage,
+  hashForRoute,
+  localizedAuthError,
+  navigationFor,
+  navigationIcons,
+  pageLabel as foundationPageLabel,
+  pageSubtitle as foundationPageSubtitle,
+  resolveProtectedRoute,
+  translate as foundationText,
+} from "./foundation-shell.js";
 
 const state = {
   user: null,
@@ -9,8 +20,9 @@ const state = {
   calendarDate: new Date().toISOString().slice(0, 10),
   quickSearch: "",
   quickResults: null,
-  lang: ["he", "ar"].includes(localStorage.getItem("clinova-lang")) ? localStorage.getItem("clinova-lang") : "he",
+  lang: ["he", "ar", "en"].includes(localStorage.getItem("clinova-lang")) ? localStorage.getItem("clinova-lang") : "he",
   reportTab: "overview",
+  mobileNavOpen: false,
 };
 
 const APP_VERSION = "1.6.2";
@@ -197,6 +209,7 @@ async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || "حدث خطأ");
+    error.status = response.status;
     error.code = data.code || data.error || "";
     error.details = data.details || {};
     throw error;
@@ -439,8 +452,7 @@ function bindPageActions() {
   });
   document.querySelectorAll("[data-receipt]").forEach((button) => button.addEventListener("click", () => printReceipt(Number(button.dataset.receipt))));
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => {
-    state.page = button.dataset.page;
-    renderApp();
+    setProtectedRoute(button.dataset.page);
   }));
   document.querySelectorAll("[data-calendar-view]").forEach((button) => button.addEventListener("click", () => {
     state.calendarView = button.dataset.calendarView;
@@ -550,12 +562,15 @@ async function boot() {
     renderAcceptInvitation(inviteToken);
     return;
   }
+  renderFoundationLoading();
   const me = await api("/api/me");
   if (!me.user) {
+    setProtectedRoute("login", { replace: true, render: false });
     renderLogin();
     return;
   }
   state.user = me.user;
+  applyProtectedRoute({ replace: true, render: false });
   await loadData();
   renderApp();
 }
@@ -2683,62 +2698,197 @@ formFieldsHe = function (resource, row = {}) {
   return "";
 }
 
-renderApp = function () {
-  const nav = state.user.platformOwner ? ["platform", "platformBilling", "platformReports", "platformHealth"] : (navByRole[state.user.role] || []);
-  if (!nav.includes(state.page)) state.page = nav[0] || "dashboard";
-  const safeUserName = escapeHtml(state.user.name);
+function setDocumentLanguage() {
   document.documentElement.lang = state.lang;
-  document.documentElement.dir = "rtl";
-  mount(html`<div class="shell"><aside class="sidebar"><div class="brand"><img class="brand-logo" src="${escapeAttr(logoSrc())}" alt="Clinova"><div><h3>Clinova</h3><div style="opacity:.75;font-size:12px">${state.user.platformOwner ? clean("platformSystem") : clean("system")}</div><div class="app-version">v${escapeHtml(APP_VERSION)}</div></div></div><nav class="nav">${nav.map((page) => `<button data-page="${escapeAttr(page)}" class="${state.page === page ? "active" : ""}">${escapeHtml(pageLabel(page))}</button>`).join("")}</nav><div class="user-box"><strong>${safeUserName}</strong><span style="opacity:.75">${escapeHtml(roleLabel(state.user.role))}</span><button class="btn ghost" id="logoutBtn" style="color:white;border-color:rgba(255,255,255,.35)">${clean("logout")}</button></div></aside><main class="main"><header class="topbar"><div><h2>${escapeHtml(pageLabel(state.page))}</h2><div class="muted page-subtitle">${escapeHtml(pageSubtitle())}</div></div><div class="topbar-actions">${languagePicker()}${renderQuickSearchLive()}${topActionI18n()}</div></header><section class="content">${renderPage()}</section></main></div><div id="modalRoot"></div>`);
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
+  document.documentElement.dir = directionForLanguage(state.lang);
+}
+
+function routeUrl(page) {
+  return `${location.pathname}${location.search}${hashForRoute(page)}`;
+}
+
+function setProtectedRoute(page, options = {}) {
+  const { replace = false, render = true } = options;
+  const target = resolveProtectedRoute(hashForRoute(page), state.user);
+  state.page = target.page;
+  state.mobileNavOpen = false;
+  history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(target.page));
+  if (render) {
+    if (target.page === "login") renderLogin();
+    else renderApp();
+  }
+}
+
+function applyProtectedRoute(options = {}) {
+  const { replace = false, render = true } = options;
+  const target = resolveProtectedRoute(location.hash, state.user);
+  state.page = target.page;
+  state.mobileNavOpen = false;
+  if (target.redirect) history.replaceState({}, "", routeUrl(target.page));
+  else if (replace) history.replaceState({}, "", routeUrl(target.page));
+  if (render) {
+    if (target.page === "login") renderLogin();
+    else renderApp();
+  }
+}
+
+function iconMarkup(name) {
+  return `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${navigationIcons[name] || navigationIcons.home}</svg>`;
+}
+
+function renderNavigationItems(items) {
+  return items.map((item) => `<button type="button" data-page="${escapeAttr(item.page)}" class="${state.page === item.page ? "active" : ""}" ${state.page === item.page ? 'aria-current="page"' : ""}>${iconMarkup(item.icon)}<span>${escapeHtml(foundationPageLabel(state.lang, item.page))}</span></button>`).join("");
+}
+
+function renderFoundationLanguagePicker() {
+  const labels = { he: "עברית", ar: "العربية", en: "English" };
+  return `<label class="language-picker foundation-language"><span class="sr-only">${escapeHtml(foundationText(state.lang, "shell.language"))}</span><select id="languageSelect" aria-label="${escapeAttr(foundationText(state.lang, "shell.language"))}">${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${state.lang === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>`;
+}
+
+function activeClinicName() {
+  return state.data?.tenant?.name || state.data?.settings?.clinicName || foundationText(state.lang, "app.name");
+}
+
+function roleName() {
+  return foundationText(state.lang, `roles.${state.user?.role || "admin"}`);
+}
+
+function renderFoundationShell() {
+  const navigation = navigationFor(state.user);
+  const pageTitle = foundationPageLabel(state.lang, state.page);
+  const subtitle = foundationPageSubtitle(state.lang, state.page) || pageSubtitle();
+  const clinicName = state.user.platformOwner ? foundationText(state.lang, "nav.platform") : activeClinicName();
+  const safeUserName = escapeHtml(state.user.name || state.user.username || "");
+  setDocumentLanguage();
+  mount(html`
+    <div class="shell foundation-shell ${state.mobileNavOpen ? "nav-open" : ""}">
+      <button class="sidebar-scrim" type="button" id="closeMobileNav" aria-label="${escapeAttr(foundationText(state.lang, "shell.closeMenu"))}"></button>
+      <aside class="sidebar foundation-sidebar" id="appSidebar" aria-label="${escapeAttr(foundationText(state.lang, "shell.primaryNavigation"))}">
+        <div class="brand foundation-brand">
+          <img class="brand-logo" src="${escapeAttr(logoSrc())}" alt="">
+          <div><h3>Clinova</h3><div class="clinic-context">${escapeHtml(clinicName)}</div></div>
+          <button class="sidebar-close" type="button" id="sidebarCloseButton" aria-label="${escapeAttr(foundationText(state.lang, "shell.closeMenu"))}">×</button>
+        </div>
+        <div class="sidebar-scroll">
+          <div class="nav-section-label">${escapeHtml(foundationText(state.lang, "shell.primaryNavigation"))}</div>
+          <nav class="nav foundation-nav">${renderNavigationItems(navigation.primary)}</nav>
+          ${navigation.tools.length ? `<div class="nav-section-label tools-label">${escapeHtml(foundationText(state.lang, "shell.moreTools"))}</div><nav class="nav foundation-nav secondary-nav">${renderNavigationItems(navigation.tools)}</nav>` : ""}
+        </div>
+        <div class="user-box foundation-user-box">
+          <div class="user-avatar" aria-hidden="true">${escapeHtml((state.user.name || state.user.username || "C").trim().slice(0, 1).toUpperCase())}</div>
+          <div class="user-identity"><strong>${safeUserName}</strong><span>${escapeHtml(roleName())}</span></div>
+          <button class="icon-button logout-icon" type="button" data-logout aria-label="${escapeAttr(foundationText(state.lang, "shell.logout"))}">${iconMarkup("logout")}</button>
+        </div>
+      </aside>
+      <main class="main foundation-main">
+        <header class="topbar foundation-topbar">
+          <div class="topbar-heading">
+            <button class="mobile-menu-button" type="button" id="mobileMenuButton" aria-controls="appSidebar" aria-expanded="${state.mobileNavOpen}" aria-label="${escapeAttr(foundationText(state.lang, "shell.openMenu"))}"><span></span><span></span><span></span></button>
+            <div>
+              <div class="breadcrumb"><span>${escapeHtml(foundationText(state.lang, "shell.breadcrumbHome"))}</span><span aria-hidden="true">/</span><strong>${escapeHtml(pageTitle)}</strong></div>
+              <h1>${escapeHtml(pageTitle)}</h1>
+              ${subtitle ? `<p class="page-subtitle">${escapeHtml(subtitle)}</p>` : ""}
+            </div>
+          </div>
+          <div class="topbar-actions foundation-actions">
+            ${renderFoundationLanguagePicker()}
+            <details class="user-menu">
+              <summary aria-label="${escapeAttr(foundationText(state.lang, "shell.userMenu"))}"><span class="user-avatar">${escapeHtml((state.user.name || state.user.username || "C").trim().slice(0, 1).toUpperCase())}</span><span class="user-menu-name">${safeUserName}</span></summary>
+              <div class="user-menu-popover"><strong>${safeUserName}</strong><span>${escapeHtml(roleName())}</span><button type="button" data-logout>${escapeHtml(foundationText(state.lang, "shell.logout"))}</button></div>
+            </details>
+          </div>
+        </header>
+        <section class="content foundation-content" id="mainContent" tabindex="-1">${renderPage()}</section>
+      </main>
+    </div>
+    <div id="modalRoot"></div>
+  `);
+}
+
+async function logoutFromFoundation() {
+  document.querySelectorAll("[data-logout]").forEach((button) => { button.disabled = true; });
+  try {
     await api("/api/logout", { method: "POST" });
+  } finally {
     state.user = null;
-    renderLogin();
-  });
+    state.data = {};
+    setProtectedRoute("login", { replace: true });
+  }
+}
+
+renderApp = function () {
+  if (!state.user) {
+    setProtectedRoute("login", { replace: true });
+    return;
+  }
+  const target = resolveProtectedRoute(hashForRoute(state.page), state.user);
+  if (target.page !== state.page) {
+    setProtectedRoute(target.page, { replace: true });
+    return;
+  }
+  renderFoundationShell();
+  document.querySelectorAll("[data-logout]").forEach((button) => button.addEventListener("click", logoutFromFoundation));
+  const toggleNavigation = (open) => {
+    state.mobileNavOpen = open;
+    renderApp();
+  };
+  document.getElementById("mobileMenuButton")?.addEventListener("click", () => toggleNavigation(true));
+  document.getElementById("closeMobileNav")?.addEventListener("click", () => toggleNavigation(false));
+  document.getElementById("sidebarCloseButton")?.addEventListener("click", () => toggleNavigation(false));
   bindPageActions();
 }
 
-renderLogin = function (error = "") {
-  const he = state.lang === "he";
-  document.documentElement.lang = state.lang;
-  document.documentElement.dir = "rtl";
+renderLogin = function (error = "", values = {}) {
+  state.user = null;
+  setDocumentLanguage();
+  const errorMessage = error ? localizedAuthError(state.lang, error) : "";
   mount(html`
-    <main class="login">
-      <form class="login-card" id="loginForm">
-        <div class="brand">
-          <img class="brand-logo" src="/logo.svg" alt="Clinova">
-          <div>
-            <h1>Clinova</h1>
-            <div class="muted">${he ? "\u05de\u05e2\u05e8\u05db\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc \u05e7\u05dc\u05d9\u05e0\u05d9\u05e7\u05d4" : "\u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0639\u064a\u0627\u062f\u0629"}</div>
-          </div>
-        </div>
-        ${error ? `<div class="alert">${escapeHtml(error)}</div>` : ""}
-        <div class="field">
-          <label>${he ? "\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9" : "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645"}</label>
-          <input name="username" autocomplete="username" required>
-        </div>
-        <div class="field">
-          <label>${he ? "\u05de\u05d6\u05d4\u05d4 \u05de\u05e8\u05e4\u05d0\u05d4" : "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0639\u064a\u0627\u062f\u0629"}</label>
-          <input name="clinicIdentifier" autocomplete="organization">
-        </div>
-        <div class="field">
-          <label>${he ? "\u05e1\u05d9\u05e1\u05de\u05d4" : "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631"}</label>
-          <input name="password" type="password" autocomplete="current-password" required>
-        </div>
-        <button class="btn" style="width:100%">${he ? "\u05db\u05e0\u05d9\u05e1\u05d4" : "\u062f\u062e\u0648\u0644"}</button>
-        <div class="version-badge">v${escapeHtml(APP_VERSION)}</div>
+    <main class="login foundation-login">
+      <section class="login-intro" aria-hidden="true">
+        <img src="/logo.svg" alt="">
+        <div><span>Clinova</span><p>${escapeHtml(foundationText(state.lang, "app.subtitle"))}</p></div>
+      </section>
+      <form class="login-card foundation-login-card" id="loginForm" novalidate>
+        <div class="login-brand"><img class="brand-logo" src="/logo.svg" alt=""><span>Clinova</span></div>
+        <div class="login-heading"><h1>${escapeHtml(foundationText(state.lang, "auth.title"))}</h1><p>${escapeHtml(foundationText(state.lang, "auth.subtitle"))}</p></div>
+        <div class="alert login-error ${errorMessage ? "" : "is-hidden"}" id="loginError" role="alert" aria-live="polite">${escapeHtml(errorMessage)}</div>
+        <div class="field"><label for="loginIdentifier">${escapeHtml(foundationText(state.lang, "auth.identifier"))}</label><input id="loginIdentifier" name="identifier" value="${escapeAttr(values.identifier || "")}" autocomplete="username" required autofocus></div>
+        <div class="field"><label for="clinicIdentifier">${escapeHtml(foundationText(state.lang, "auth.clinic"))}</label><input id="clinicIdentifier" name="clinicIdentifier" value="${escapeAttr(values.clinicIdentifier || "")}" autocomplete="organization" aria-describedby="clinicHint"><small id="clinicHint">${escapeHtml(foundationText(state.lang, "auth.clinicHint"))}</small></div>
+        <div class="field"><label for="loginPassword">${escapeHtml(foundationText(state.lang, "auth.password"))}</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn login-submit" type="submit"><span>${escapeHtml(foundationText(state.lang, "auth.submit"))}</span><span class="button-spinner" aria-hidden="true"></span></button>
+        <div class="login-footer">v${escapeHtml(APP_VERSION)} · ${renderFoundationLanguagePicker()}</div>
       </form>
     </main>
   `);
+  document.getElementById("languageSelect")?.addEventListener("change", (event) => {
+    state.lang = event.currentTarget.value;
+    localStorage.setItem("clinova-lang", state.lang);
+    renderLogin("", values);
+  });
   document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form));
+    const button = form.querySelector("button[type='submit']");
+    const errorBox = document.getElementById("loginError");
+    if (!body.identifier?.trim() || !body.password) {
+      errorBox.textContent = foundationText(state.lang, "auth.required");
+      errorBox.classList.remove("is-hidden");
+      return;
+    }
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.querySelector("span:first-child").textContent = foundationText(state.lang, "auth.submitting");
+    form.setAttribute("aria-busy", "true");
+    errorBox.classList.add("is-hidden");
     try {
-      const result = await api("/api/login", { method: "POST", body: Object.fromEntries(new FormData(event.currentTarget)) });
+      const result = await api("/api/login", { method: "POST", body });
       state.user = result.user;
+      applyProtectedRoute({ replace: true, render: false });
       await loadData();
       renderApp();
     } catch (err) {
-      renderLogin(err.message);
+      renderLogin(err, { identifier: body.identifier, clinicIdentifier: body.clinicIdentifier });
     }
   });
 }
@@ -3597,7 +3747,115 @@ renderDashboardHe = function () {
   `;
 }
 
-boot().catch((err) => renderLogin(err.message));
+function renderDashboardPanel(titleKey, rows, renderRow, emptyKey, targetPage = "") {
+  const title = foundationText(state.lang, titleKey);
+  return html`
+    <article class="foundation-panel">
+      <div class="foundation-panel-head">
+        <div><h2>${escapeHtml(title)}</h2><span>${escapeHtml(foundationText(state.lang, rows.length ? "dashboard.realData" : "dashboard.emptyState"))}</span></div>
+        ${targetPage && rows.length ? `<button type="button" class="text-action" data-page="${escapeAttr(targetPage)}">${escapeHtml(foundationText(state.lang, "dashboard.viewAll"))}</button>` : ""}
+      </div>
+      ${rows.length
+        ? `<div class="foundation-panel-list">${rows.slice(0, 4).map(renderRow).join("")}</div>`
+        : `<div class="foundation-empty"><span class="empty-icon" aria-hidden="true">${iconMarkup(titleKey === "dashboard.todayAppointments" ? "calendar" : titleKey === "dashboard.recentPatients" ? "users" : titleKey === "dashboard.pendingActions" ? "audit" : "clock")}</span><p>${escapeHtml(foundationText(state.lang, emptyKey))}</p></div>`}
+    </article>
+  `;
+}
+
+renderDashboardHe = function () {
+  const today = new Date().toISOString().slice(0, 10);
+  const locale = state.lang === "he" ? "he-IL" : state.lang === "ar" ? "ar-IL" : "en-GB";
+  const appointments = (state.data.appointments || [])
+    .filter((item) => item.date === today && item.status !== "cancelled")
+    .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+  const waitingQueue = Array.isArray(state.data.waitingQueue) ? state.data.waitingQueue : [];
+  const patients = (state.data.clients || []).slice(0, 4);
+  const actions = (state.data.crmTasks || []).filter((item) => (item.status || "open") === "open");
+  const clinicName = activeClinicName();
+  const userName = state.user.name || state.user.username || "";
+  const quickLinks = navigationFor(state.user).primary.filter((item) => item.page !== "dashboard").slice(0, 6);
+  const dateLabel = new Date().toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const row = (primary, secondary, icon) => `<div class="foundation-data-row"><span class="data-row-icon">${iconMarkup(icon)}</span><div><strong>${escapeHtml(primary || "—")}</strong><span>${escapeHtml(secondary || "")}</span></div></div>`;
+
+  return html`
+    <div class="foundation-dashboard">
+      <section class="welcome-card">
+        <div>
+          <span class="welcome-date">${escapeHtml(dateLabel)}</span>
+          <h2>${escapeHtml(foundationText(state.lang, "dashboard.welcome", { name: userName }))}</h2>
+          <p>${escapeHtml(foundationText(state.lang, "dashboard.welcomeBody", { clinic: clinicName }))}</p>
+          <span class="signed-in-note">${escapeHtml(foundationText(state.lang, "dashboard.signedInAs", { name: userName }))}</span>
+        </div>
+        <div class="welcome-clinic" aria-label="${escapeAttr(foundationText(state.lang, "shell.currentClinic"))}"><span>${escapeHtml(foundationText(state.lang, "shell.currentClinic"))}</span><strong>${escapeHtml(clinicName)}</strong></div>
+      </section>
+
+      <section class="quick-navigation" aria-labelledby="quickNavigationTitle">
+        <div class="section-heading"><h2 id="quickNavigationTitle">${escapeHtml(foundationText(state.lang, "dashboard.quickNavigation"))}</h2></div>
+        <div class="quick-navigation-grid">
+          ${quickLinks.map((item) => `<button type="button" data-page="${escapeAttr(item.page)}"><span class="quick-icon">${iconMarkup(item.icon)}</span><strong>${escapeHtml(foundationPageLabel(state.lang, item.page))}</strong><span class="quick-arrow" aria-hidden="true">←</span></button>`).join("")}
+        </div>
+      </section>
+
+      <section class="foundation-dashboard-grid">
+        ${renderDashboardPanel(
+          "dashboard.todayAppointments",
+          appointments,
+          (item) => row(`${item.time || "—"} · ${item.clientName || ""}`, `${item.serviceName || ""}${item.therapistName ? ` · ${item.therapistName}` : ""}`, "calendar"),
+          "dashboard.noAppointments",
+          "appointments",
+        )}
+        ${renderDashboardPanel(
+          "dashboard.waitingQueue",
+          waitingQueue,
+          (item) => row(item.clientName || item.name, item.status || "", "clock"),
+          "dashboard.noQueue",
+        )}
+        ${renderDashboardPanel(
+          "dashboard.recentPatients",
+          patients,
+          (item) => row(`${item.fname || ""} ${item.lname || ""}`.trim(), item.phone || item.email || "", "users"),
+          "dashboard.noPatients",
+          "clients",
+        )}
+        ${renderDashboardPanel(
+          "dashboard.pendingActions",
+          actions,
+          (item) => row(item.title || item.description || "", item.dueDate || item.clientName || "", "audit"),
+          "dashboard.noActions",
+          "crm",
+        )}
+      </section>
+    </div>
+  `;
+}
+
+function renderFoundationLoading() {
+  setDocumentLanguage();
+  mount(`<main class="foundation-boundary" aria-busy="true"><img src="/logo.svg" alt=""><div class="boundary-spinner" aria-hidden="true"></div><p>${escapeHtml(foundationText(state.lang, "shell.loading"))}</p></main>`);
+}
+
+function renderFoundationError(error) {
+  setDocumentLanguage();
+  mount(`<main class="foundation-boundary"><img src="/logo.svg" alt=""><h1>${escapeHtml(foundationText(state.lang, "shell.loadError"))}</h1><p>${escapeHtml(error?.message || "")}</p><button class="btn" id="retryBoot" type="button">${escapeHtml(foundationText(state.lang, "shell.retry"))}</button></main>`);
+  document.getElementById("retryBoot")?.addEventListener("click", () => boot().catch(renderFoundationError));
+}
+
+window.addEventListener("hashchange", () => applyProtectedRoute());
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.mobileNavOpen) {
+    state.mobileNavOpen = false;
+    renderApp();
+  }
+});
+
+boot().catch((err) => {
+  if (err?.status === 401) {
+    state.user = null;
+    setProtectedRoute("login", { replace: true });
+    return;
+  }
+  renderFoundationError(err);
+});
 
 
 
