@@ -6,6 +6,11 @@ import {
   renderAppointmentWorkspace,
 } from "./appointment-workspace.js";
 import {
+  emptyPatientFilters,
+  renderPatientProfile,
+  renderPatientWorkspace,
+} from "./patient-workspace.js";
+import {
   directionForLanguage,
   hashForRoute,
   localizedAuthError,
@@ -29,6 +34,12 @@ const state = {
     error: "",
     queue: [],
     filters: { ...emptyWorkspaceFilters },
+  },
+  patientWorkspace: {
+    status: "idle",
+    error: "",
+    data: null,
+    filters: { ...emptyPatientFilters },
   },
   quickSearch: "",
   quickResults: null,
@@ -454,6 +465,31 @@ async function refreshAppointmentWorkspace({ renderLoading = true } = {}) {
   if (state.page === "calendar") renderApp();
 }
 
+async function refreshPatientWorkspace({ renderLoading = true } = {}) {
+  if (!state.user || state.user.platformOwner || state.page !== "clients") return;
+  state.patientWorkspace.status = "loading";
+  state.patientWorkspace.error = "";
+  if (renderLoading) renderApp();
+  const filters = state.patientWorkspace.filters;
+  const query = new URLSearchParams({
+    q: filters.query,
+    status: filters.status,
+    therapistId: filters.therapistId,
+    upcoming: filters.upcoming,
+    recent: filters.recent,
+    page: String(filters.page),
+    pageSize: String(filters.pageSize),
+  });
+  try {
+    state.patientWorkspace.data = await api(`/api/clients/workspace?${query}`);
+    state.patientWorkspace.status = "ready";
+  } catch (error) {
+    state.patientWorkspace.status = "error";
+    state.patientWorkspace.error = localizedError(error);
+  }
+  if (state.page === "clients") renderApp();
+}
+
 function closeAppointmentDrawer() {
   const root = document.getElementById("modalRoot");
   if (root) root.innerHTML = "";
@@ -563,6 +599,22 @@ function bindPageActions() {
   const workspaceRetry = document.querySelector("[data-workspace-retry]");
   if (workspaceRetry) workspaceRetry.addEventListener("click", () => void refreshAppointmentWorkspace());
   document.querySelectorAll("[data-appointment-details]").forEach((button) => button.addEventListener("click", () => void openAppointmentDetails(Number(button.dataset.appointmentDetails))));
+  const patientSearch = document.querySelector("[data-patient-search]");
+  if (patientSearch) patientSearch.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(patientSearch));
+    state.patientWorkspace.filters = { ...state.patientWorkspace.filters, ...values, page: 1 };
+    void refreshPatientWorkspace();
+  });
+  document.querySelector("[data-patient-clear]")?.addEventListener("click", () => {
+    state.patientWorkspace.filters = { ...emptyPatientFilters };
+    void refreshPatientWorkspace();
+  });
+  document.querySelector("[data-patient-retry]")?.addEventListener("click", () => void refreshPatientWorkspace());
+  document.querySelectorAll("[data-patient-page]").forEach((button) => button.addEventListener("click", () => {
+    state.patientWorkspace.filters.page = Number(button.dataset.patientPage || 1);
+    void refreshPatientWorkspace();
+  }));
   document.querySelectorAll("[data-platform-tenant-form]").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const tenantId = form.dataset.platformTenantForm;
@@ -656,6 +708,7 @@ async function boot() {
   await loadData();
   renderApp();
   if (state.page === "calendar") void refreshAppointmentWorkspace();
+  if (state.page === "clients") void refreshPatientWorkspace();
 }
 
 function renderLoginLegacy(error = "") {
@@ -769,6 +822,56 @@ pageSubtitle = function () {
   const subtitle = tr(`subtitles.${state.page}`);
   return subtitle === `subtitles.${state.page}` ? (extra[state.page] || "") : subtitle;
 }
+function bindPatientProfile(id) {
+  const root = document.getElementById("modalRoot");
+  root?.querySelectorAll("[data-close-patient-profile]").forEach((button) => button.addEventListener("click", closeModal));
+  root?.querySelector("[data-patient-retry]")?.addEventListener("click", () => void openClientProfile(id));
+  root?.querySelectorAll("[data-patient-appointment-details]").forEach((button) => button.addEventListener("click", () => void openAppointmentDetails(Number(button.dataset.patientAppointmentDetails))));
+  const noteForm = root?.querySelector("#clientNoteForm");
+  if (noteForm) noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/clients/${id}/notes`, { method: "POST", body: Object.fromEntries(new FormData(noteForm)) });
+      await openClientProfile(id);
+      if (state.page === "clients") void refreshPatientWorkspace({ renderLoading: false });
+    } catch (error) {
+      showCenterError(localizedError(error));
+    }
+  });
+  const fileForm = root?.querySelector("#clientFileForm");
+  if (fileForm) fileForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/clients/${id}/files`, { method: "POST", body: new FormData(fileForm) });
+      await openClientProfile(id);
+    } catch (error) {
+      showCenterError(localizedError(error));
+    }
+  });
+  root?.querySelectorAll("[data-delete-file]").forEach((button) => button.addEventListener("click", async () => {
+    try {
+      await api(`/api/client-files/${button.dataset.deleteFile}`, { method: "DELETE" });
+      await openClientProfile(Number(button.dataset.client));
+    } catch (error) {
+      showCenterError(localizedError(error));
+    }
+  }));
+}
+
+openClientProfile = async function (id) {
+  const root = document.getElementById("modalRoot");
+  if (!root) return;
+  root.innerHTML = renderPatientProfile({ language: state.lang, status: "loading" });
+  bindPatientProfile(id);
+  try {
+    const data = await api(`/api/clients/${id}/history`);
+    root.innerHTML = renderPatientProfile({ language: state.lang, data });
+  } catch (error) {
+    root.innerHTML = renderPatientProfile({ language: state.lang, status: "error", error: localizedError(error) });
+  }
+  bindPatientProfile(id);
+}
+
 topActionI18n = function () {
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${tr("newAppointment")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${tr("newClient")}</button>`;
@@ -2766,7 +2869,7 @@ openForm = function (resource, id = null, defaults = {}) {
 }
 
 formFieldsHe = function (resource, row = {}) {
-  if (resource === "clients") return html`${field("fname", state.lang === "he" ? "שם פרטי" : "الاسم الأول", row.fname || "")}${field("lname", state.lang === "he" ? "שם משפחה" : "اسم العائلة", row.lname || "")}${field("phone", state.lang === "he" ? "טלפון" : "الهاتف", row.phone || "")}${field("email", state.lang === "he" ? "אימייל" : "البريد", row.email || "", "email", false)}${field("notes", state.lang === "he" ? "הערות" : "ملاحظات", row.notes || "", "textarea", false, "full")}`;
+  if (resource === "clients") return html`${field("fname", state.lang === "he" ? "שם פרטי" : "الاسم الأول", row.fname || "")}${field("lname", state.lang === "he" ? "שם משפחה" : "اسم العائلة", row.lname || "")}${field("phone", state.lang === "he" ? "טלפון" : "الهاتف", row.phone || "")}${field("email", state.lang === "he" ? "אימייל" : "البريد", row.email || "", "email", false)}${state.user?.role === "admin" ? field("notes", state.lang === "he" ? "הערות" : "ملاحظات", row.notes || "", "textarea", false, "full") : ""}`;
   if (resource === "appointments") return html`${select("clientId", pageLabel("clients"), (state.data.clients || []).map((c) => [c.id, `${c.fname} ${c.lname}`]), row.clientId || "")}${select("serviceId", pageLabel("services"), (state.data.services || []).map((s) => [s.id, s.name]), row.serviceId || "")}${select("therapistId", clean("table.therapist"), therapists(), row.therapistId || state.user.id)}${field("date", clean("table.date"), row.date || new Date().toISOString().slice(0, 10), "date")}${field("time", clean("table.time"), row.time || clinicWorkStart(), "time")}${select("status", clean("table.status"), [["pending", cleanStatusLabel("pending")], ["done", cleanStatusLabel("done")], ["cancelled", cleanStatusLabel("cancelled")]], row.status || "pending")}${select("paymentStatus", clean("table.payment"), [["unpaid", cleanPaymentLabel("unpaid")], ["paid", cleanPaymentLabel("paid")], ["deposit", cleanPaymentLabel("deposit")]], row.paymentStatus || "unpaid")}${field("paidAmount", state.lang === "he" ? "סכום ששולם" : "المبلغ المدفوع", row.paidAmount || 0, "number", false)}${field("notes", state.lang === "he" ? "הערות" : "ملاحظات", row.notes || "", "textarea", false, "full")}`;
   if (resource === "categories") return field("name", state.lang === "he" ? "שם קטגוריה" : "اسم القسم", row.name || "");
   if (resource === "services") return html`${field("name", state.lang === "he" ? "שם שירות" : "اسم الخدمة", row.name || "")}${select("categoryId", pageLabel("categories"), (state.data.categories || []).map((c) => [c.id, c.name]), row.categoryId || "")}${field("duration", state.lang === "he" ? "משך בדקות" : "المدة بالدقائق", row.duration || 60, "number")}${field("price", clean("table.price"), row.price || 0, "number")}${select("active", state.lang === "he" ? "פעיל" : "فعال", [["true", clean("yes")], ["false", clean("no")]], String(row.active !== false))}`;
@@ -2787,8 +2890,10 @@ function setProtectedRoute(page, options = {}) {
   const { replace = false, render = true } = options;
   const target = resolveProtectedRoute(hashForRoute(page), state.user);
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
+  const enteringPatients = target.page === "clients" && state.page !== "clients";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
+  if (enteringPatients) state.patientWorkspace.status = "idle";
   state.mobileNavOpen = false;
   history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(target.page));
   if (render) {
@@ -2796,6 +2901,7 @@ function setProtectedRoute(page, options = {}) {
     else {
       renderApp();
       if (target.page === "calendar") void refreshAppointmentWorkspace();
+      if (target.page === "clients") void refreshPatientWorkspace();
     }
   }
 }
@@ -2804,8 +2910,10 @@ function applyProtectedRoute(options = {}) {
   const { replace = false, render = true } = options;
   const target = resolveProtectedRoute(location.hash, state.user);
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
+  const enteringPatients = target.page === "clients" && state.page !== "clients";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
+  if (enteringPatients) state.patientWorkspace.status = "idle";
   state.mobileNavOpen = false;
   if (target.redirect) history.replaceState({}, "", routeUrl(target.page));
   else if (replace) history.replaceState({}, "", routeUrl(target.page));
@@ -2814,6 +2922,7 @@ function applyProtectedRoute(options = {}) {
     else {
       renderApp();
       if (target.page === "calendar") void refreshAppointmentWorkspace();
+      if (target.page === "clients") void refreshPatientWorkspace();
     }
   }
 }
@@ -3634,7 +3743,15 @@ renderClientsHe = function () {
   `;
 }
 
-openClientProfile = async function (id) {
+renderClientsHe = function () {
+  return renderPatientWorkspace({
+    language: state.lang,
+    workspace: state.patientWorkspace,
+    canManage: state.user.role !== "therapist",
+  });
+}
+
+const openClientProfileLegacy = async function (id) {
   try {
     const data = await api(`/api/clients/${id}/history`);
     const canWrite = state.user.role !== "therapist";

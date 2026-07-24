@@ -11,6 +11,7 @@ import { listFeedbackRequests } from "../../repositories/feedback.repository.js"
 import { clinicSettings } from "../../repositories/settings.repository.js";
 import { tenantDomains } from "../../repositories/tenant-domains.repository.js";
 import { listMessageLogs } from "../../repositories/whatsapp.repository.js";
+import { permissions } from "../../repositories/permissions.repository.js";
 import { listGiftCards } from "../gifts/gifts.repository.js";
 import { platformTenants } from "../platform/platform.repository.js";
 import {
@@ -115,7 +116,7 @@ async function listClientsForBootstrap(user) {
     source: row.source || "",
     tags: jsonArrayForBootstrap(row.tags),
     lastContactedAt: row.last_contacted_at || "",
-    notes: row.notes,
+    ...(permissions.clients_clinical_read.includes(user.role) ? { notes: row.notes } : {}),
   }));
 }
 
@@ -142,10 +143,14 @@ async function listAppointmentsForBootstrap(user) {
     date: row.date,
     time: row.time,
     status: row.status,
-    notes: row.notes,
+    ...(permissions.clients_clinical_read.includes(user.role) ? { notes: row.notes } : {}),
     duration: row.duration,
     price: row.price,
-    paymentStatus: row.payment_status || "unpaid",
-    paidAmount: Number(row.paid_amount || 0),
+    ...(permissions.clients_financial_read.includes(user.role)
+      ? {
+          paymentStatus: row.payment_status || "unpaid",
+          paidAmount: Number(row.paid_amount || 0),
+        }
+      : {}),
   }));
 }

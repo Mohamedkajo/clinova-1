@@ -7,13 +7,18 @@ import {
   clientTherapistExists,
   createClient,
   findClientCrmFields,
+  findClientProfileRow,
   listClientAppointments,
+  listClientConsentSignatures,
   listClientCrmEvents,
   listClientFiles,
   listClientRows,
+  listPatientTherapistOptions,
+  listPatientWorkspaceRows,
   tenantBillingSnapshot,
   updateClient,
 } from "../repositories/clients.repository.js";
+import { permissions } from "../repositories/permissions.repository.js";
 
 const planCatalog = {
   starter: { name: "Starter", monthlyPrice: 49, maxUsers: 5, maxClients: 200, whatsapp: false, billing: false },
@@ -61,8 +66,8 @@ async function assertTenantCanWrite(tenantId, feature = "write") {
   };
 }
 
-function clientFromRow(row) {
-  return {
+function clientFromRow(row, { includeClinical = true } = {}) {
+  const client = {
     id: row.id,
     fname: row.fname,
     lname: row.lname,
@@ -73,12 +78,13 @@ function clientFromRow(row) {
     source: row.source || "",
     tags: jsonArray(row.tags),
     lastContactedAt: row.last_contacted_at || "",
-    notes: row.notes,
   };
+  if (includeClinical) client.notes = row.notes;
+  return client;
 }
 
-function appointmentFromRow(row) {
-  return {
+function appointmentFromRow(row, { includeClinical = true, includeFinancial = true } = {}) {
+  const appointment = {
     id: row.id,
     clientId: row.client_id,
     clientName: `${row.fname} ${row.lname}`,
@@ -90,12 +96,15 @@ function appointmentFromRow(row) {
     date: row.date,
     time: row.time,
     status: row.status,
-    notes: row.notes,
     duration: row.duration,
-    price: row.price,
-    paymentStatus: row.payment_status || "unpaid",
-    paidAmount: Number(row.paid_amount || 0),
   };
+  if (includeClinical) appointment.notes = row.notes;
+  if (includeFinancial) {
+    appointment.price = row.price;
+    appointment.paymentStatus = row.payment_status || "unpaid";
+    appointment.paidAmount = Number(row.paid_amount || 0);
+  }
+  return appointment;
 }
 
 function clientValues(body, existing = {}) {
@@ -108,7 +117,7 @@ function clientValues(body, existing = {}) {
     stage: Object.prototype.hasOwnProperty.call(body, "stage") ? body.stage || "lead" : existing.stage || "lead",
     source: Object.prototype.hasOwnProperty.call(body, "source") ? body.source || "" : existing.source || "",
     tags: Object.prototype.hasOwnProperty.call(body, "tags") ? parseTags(body.tags) : existing.tags || "[]",
-    notes: body.notes || "",
+    notes: Object.prototype.hasOwnProperty.call(body, "notes") ? body.notes || "" : existing.notes || "",
   };
 }
 
@@ -119,11 +128,151 @@ function validateClientStage(body) {
   return validClientStages.has(body.stage) ? null : { status: 400, body: { error: "Valid client stage is required." } };
 }
 
-export async function getClients(user) {
-  return { status: 200, body: (await listClientRows(user)).map(clientFromRow) };
+function localDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-export async function getClientHistory(user, id) {
+function recentCutoff(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function maxTimestamp(...values) {
+  return values.filter(Boolean).sort().at(-1) || null;
+}
+
+function patientListFromRow(row) {
+  return {
+    id: row.id,
+    firstName: row.fname,
+    lastName: row.lname,
+    name: `${row.fname} ${row.lname}`.trim(),
+    phone: row.phone,
+    email: row.email || "",
+    stage: row.stage || "lead",
+    therapist: row.therapist_id ? { id: row.therapist_id, name: row.therapist_name || "" } : null,
+    lastAppointmentDate: row.last_appointment_date || null,
+    nextAppointmentDate: row.next_appointment_date || null,
+    lastActivityAt: maxTimestamp(row.updated_at, row.latest_crm_at, row.latest_appointment_at),
+  };
+}
+
+function patientProfileFromRow(row, includeClinical) {
+  const patient = {
+    id: row.id,
+    firstName: row.fname,
+    lastName: row.lname,
+    name: `${row.fname} ${row.lname}`.trim(),
+    phone: row.phone,
+    email: row.email || "",
+    stage: row.stage || "lead",
+    source: row.source || "",
+    tags: jsonArray(row.tags),
+    lastContactedAt: row.last_contacted_at || null,
+    therapist: row.therapist_id ? { id: row.therapist_id, name: row.therapist_name || "", username: row.therapist_username || "" } : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+  if (includeClinical) patient.notes = row.notes || "";
+  return patient;
+}
+
+function patientTimeline({ patientRow, appointmentRows, crmEvents, files, consents, includeClinical, includeFinancial }) {
+  const visibleCrmEvents = crmEvents.filter((event) => includeClinical || event.type !== "note");
+  const events = visibleCrmEvents.map((event) => ({
+    id: `crm-${event.id}`,
+    type: event.type === "note" ? "clinical_note" : event.type,
+    occurredAt: event.createdAt,
+    description: event.description,
+    actor: event.userName || null,
+  }));
+
+  if (!visibleCrmEvents.some((event) => event.type === "client_created")) {
+    events.push({ id: `patient-created-${patientRow.id}`, type: "patient_created", occurredAt: patientRow.created_at, description: null, actor: null });
+  }
+
+  for (const row of appointmentRows) {
+    const event = {
+      id: `appointment-${row.id}`,
+      type: "appointment",
+      occurredAt: `${row.date}T${row.time || "00:00"}:00`,
+      description: row.service_name,
+      actor: row.therapist_name || null,
+      status: row.status,
+      related: { appointmentId: row.id },
+    };
+    if (includeFinancial) {
+      event.financial = {
+        price: Number(row.price || 0),
+        paymentStatus: row.payment_status || "unpaid",
+        paidAmount: Number(row.paid_amount || 0),
+      };
+    }
+    events.push(event);
+  }
+
+  for (const file of files) {
+    events.push({ id: `file-${file.id}`, type: "file_uploaded", occurredAt: file.createdAt, description: file.name, actor: null, related: { fileId: file.id } });
+  }
+  for (const consent of consents) {
+    events.push({ id: `consent-${consent.id}`, type: "consent_signed", occurredAt: consent.signedAt, description: consent.templateTitle, actor: consent.signerName || null, related: { appointmentId: consent.appointmentId || null } });
+  }
+  return events.filter((event) => event.occurredAt).sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
+}
+
+export async function getClients(user) {
+  const includeClinical = permissions.clients_clinical_read.includes(user.role);
+  return { status: 200, body: (await listClientRows(user)).map((row) => clientFromRow(row, { includeClinical })) };
+}
+
+export async function getPatientWorkspace(user, query) {
+  const stage = String(query.status || "").trim();
+  const upcoming = String(query.upcoming || "all").trim();
+  const recent = String(query.recent || "all").trim();
+  if (stage && !validClientStages.has(stage)) return { status: 400, body: { error: "Invalid patient status filter." } };
+  if (!new Set(["all", "yes", "no"]).has(upcoming)) return { status: 400, body: { error: "Invalid upcoming appointment filter." } };
+  if (!new Set(["all", "30", "90"]).has(recent)) return { status: 400, body: { error: "Invalid recent activity filter." } };
+
+  const page = positiveInteger(query.page, 1);
+  const pageSize = Math.min(50, positiveInteger(query.pageSize, 20));
+  const therapistId = query.therapistId ? positiveInteger(query.therapistId, null) : null;
+  if (query.therapistId && !therapistId) return { status: 400, body: { error: "Invalid therapist filter." } };
+  const filters = {
+    query: String(query.q || "").trim().slice(0, 100),
+    stage: stage || null,
+    therapistId,
+    upcoming,
+    recentSince: recent === "all" ? null : recentCutoff(Number(recent)),
+    today: localDate(),
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+  };
+  const { rows, total } = await listPatientWorkspaceRows(user, filters);
+  const therapists = await listPatientTherapistOptions(user);
+  return {
+    status: 200,
+    body: {
+      items: rows.map(patientListFromRow),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      filterOptions: {
+        statuses: [...validClientStages],
+        therapists: therapists.map((item) => ({ id: item.id, name: item.name || item.username })),
+      },
+    },
+  };
+}
+
+async function getLegacyClientHistory(user, id) {
   if (!await canSeeClient(user, id)) {
     return { status: 403, body: { error: "لا تملك صلاحية لهذا العميل" } };
   }
@@ -132,6 +281,53 @@ export async function getClientHistory(user, id) {
   return {
     status: 200,
     body: { client, appointments, files: await listClientFiles(id, user.tenantId), crmEvents: await listClientCrmEvents(id, user.tenantId) },
+  };
+}
+
+export async function getClientHistory(user, id) {
+  const patientRow = await findClientProfileRow(user, id);
+  if (!patientRow) return { status: 404, body: { error: "Patient not found." } };
+
+  const includeClinical = permissions.clients_clinical_read.includes(user.role);
+  const includeFinancial = permissions.clients_financial_read.includes(user.role);
+  const [appointmentRows, crmEvents, rawFiles, consents] = await Promise.all([
+    listClientAppointments(user, id),
+    listClientCrmEvents(id, user.tenantId),
+    listClientFiles(id, user.tenantId),
+    listClientConsentSignatures(id, user.tenantId),
+  ]);
+  const files = rawFiles.map((file) => includeClinical ? file : (({ notes, ...safeFile }) => safeFile)(file));
+  const appointments = appointmentRows.map((row) => appointmentFromRow(row, { includeClinical, includeFinancial }));
+  const today = localDate();
+  const upcomingAppointment = appointments
+    .filter((item) => item.status === "pending" && item.date >= today)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))[0] || null;
+  const recentAppointment = appointments
+    .filter((item) => item.status === "done" && item.date <= today)
+    .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))[0] || null;
+  const visibleCrmEvents = crmEvents.filter((event) => includeClinical || event.type !== "note");
+  const timeline = patientTimeline({ patientRow, appointmentRows, crmEvents, files, consents, includeClinical, includeFinancial });
+
+  return {
+    status: 200,
+    body: {
+      patient: patientProfileFromRow(patientRow, includeClinical),
+      client: clientFromRow(patientRow, { includeClinical }),
+      appointments,
+      upcomingAppointment,
+      recentAppointment,
+      files,
+      consentSignatures: consents,
+      crmEvents: visibleCrmEvents,
+      timeline,
+      indicators: {
+        appointmentCount: appointments.length,
+        completedCount: appointments.filter((item) => item.status === "done").length,
+        fileCount: files.length,
+        consentCount: consents.length,
+      },
+      capabilities: { clinicalNotes: includeClinical, financial: includeFinancial, write: permissions.clients_write.includes(user.role) },
+    },
   };
 }
 

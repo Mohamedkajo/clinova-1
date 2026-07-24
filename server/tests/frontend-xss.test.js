@@ -86,17 +86,15 @@ test("legal forms page does not expose direct signing while appointment signing 
   assert.match(appointmentConsentFlow, /openConsentSignModal/);
 });
 
-test("client profile exposes controlled note action and limits visible CRM events", async () => {
+test("patient profile exposes permission-controlled note action and the server timeline", async () => {
   const source = await readFile(new URL("../../client/app.js", import.meta.url), "utf8");
-  const start = source.indexOf("openClientProfile = async function");
-  const end = source.indexOf("topActionI18n = function", start);
-  const profileRenderer = source.slice(start, end);
+  const profileRenderer = await readFile(new URL("../../client/patient-workspace.js", import.meta.url), "utf8");
 
   assert.match(profileRenderer, /clientNoteForm/);
-  assert.match(profileRenderer, /\/api\/clients\/\$\{id\}\/notes/);
-  assert.match(profileRenderer, /crmEvents\.slice\(0, 3\)/);
-  assert.match(profileRenderer, /hiddenCrmEvents/);
-  assert.match(profileRenderer, /details><summary/);
+  assert.match(profileRenderer, /capabilities\.write && capabilities\.clinicalNotes/);
+  assert.match(profileRenderer, /data\.timeline/);
+  assert.match(source, /\/api\/clients\/\$\{id\}\/notes/);
+  assert.match(source, /\/api\/clients\/\$\{id\}\/history/);
 });
 
 test("services and users actions keep working through shared action handlers", async () => {

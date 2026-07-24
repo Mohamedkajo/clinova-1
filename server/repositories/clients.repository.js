@@ -8,6 +8,86 @@ export async function listClientRows(user) {
       .all(user.tenantId);
 }
 
+function patientWorkspaceWhere(user, filters) {
+  const clauses = ["c.tenant_id = ?", "c.active = 1"];
+  const values = [user.tenantId];
+  if (user.role === "therapist") {
+    clauses.push("c.therapist_id = ?");
+    values.push(user.id);
+  }
+  if (filters.query) {
+    const term = `%${filters.query.toLowerCase()}%`;
+    clauses.push("(LOWER(c.fname || ' ' || c.lname) LIKE ? OR LOWER(c.phone) LIKE ? OR LOWER(COALESCE(c.email, '')) LIKE ?)");
+    values.push(term, term, term);
+  }
+  if (filters.stage) {
+    clauses.push("c.stage = ?");
+    values.push(filters.stage);
+  }
+  if (filters.therapistId) {
+    clauses.push("c.therapist_id = ?");
+    values.push(filters.therapistId);
+  }
+  if (filters.upcoming === "yes" || filters.upcoming === "no") {
+    clauses.push(`${filters.upcoming === "no" ? "NOT " : ""}EXISTS (
+      SELECT 1 FROM appointments upcoming
+      WHERE upcoming.tenant_id = c.tenant_id AND upcoming.client_id = c.id
+        AND upcoming.active = 1 AND upcoming.status = 'pending' AND upcoming.date >= ?
+    )`);
+    values.push(filters.today);
+  }
+  if (filters.recentSince) {
+    clauses.push(`(
+      c.updated_at >= ?
+      OR EXISTS (SELECT 1 FROM crm_events recent_event WHERE recent_event.tenant_id = c.tenant_id AND recent_event.client_id = c.id AND recent_event.created_at >= ?)
+      OR EXISTS (SELECT 1 FROM appointments recent_appointment WHERE recent_appointment.tenant_id = c.tenant_id AND recent_appointment.client_id = c.id AND recent_appointment.active = 1 AND recent_appointment.updated_at >= ?)
+    )`);
+    values.push(filters.recentSince, filters.recentSince, filters.recentSince);
+  }
+  return { sql: clauses.join(" AND "), values };
+}
+
+export async function listPatientWorkspaceRows(user, filters) {
+  const where = patientWorkspaceWhere(user, filters);
+  const rows = await db.prepare(`
+    SELECT c.*, u.name AS therapist_name,
+      (SELECT MAX(a.date) FROM appointments a WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id AND a.active = 1 AND a.status = 'done' AND a.date <= ?) AS last_appointment_date,
+      (SELECT MIN(a.date) FROM appointments a WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id AND a.active = 1 AND a.status = 'pending' AND a.date >= ?) AS next_appointment_date,
+      (SELECT MAX(e.created_at) FROM crm_events e WHERE e.tenant_id = c.tenant_id AND e.client_id = c.id) AS latest_crm_at,
+      (SELECT MAX(a.updated_at) FROM appointments a WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id AND a.active = 1) AS latest_appointment_at
+    FROM clients c
+    LEFT JOIN users u ON u.id = c.therapist_id AND u.tenant_id = c.tenant_id
+    WHERE ${where.sql}
+    ORDER BY c.updated_at DESC, c.id DESC
+    LIMIT ? OFFSET ?
+  `).all(filters.today, filters.today, ...where.values, filters.pageSize, filters.offset);
+  const totalRow = await db.prepare(`SELECT COUNT(*) AS count FROM clients c WHERE ${where.sql}`).get(...where.values);
+  return { rows, total: Number(totalRow?.count || 0) };
+}
+
+export async function listPatientTherapistOptions(user) {
+  const therapistClause = user.role === "therapist" ? "AND c.therapist_id = ?" : "";
+  const values = user.role === "therapist" ? [user.tenantId, user.id] : [user.tenantId];
+  return await db.prepare(`
+    SELECT DISTINCT u.id, u.name, u.username
+    FROM clients c
+    JOIN users u ON u.id = c.therapist_id AND u.tenant_id = c.tenant_id AND u.active = 1
+    WHERE c.tenant_id = ? AND c.active = 1 ${therapistClause}
+    ORDER BY u.name, u.id
+  `).all(...values);
+}
+
+export async function findClientProfileRow(user, clientId) {
+  const therapistClause = user.role === "therapist" ? "AND c.therapist_id = ?" : "";
+  const values = user.role === "therapist" ? [clientId, user.tenantId, user.id] : [clientId, user.tenantId];
+  return await db.prepare(`
+    SELECT c.*, u.name AS therapist_name, u.username AS therapist_username
+    FROM clients c
+    LEFT JOIN users u ON u.id = c.therapist_id AND u.tenant_id = c.tenant_id
+    WHERE c.id = ? AND c.tenant_id = ? AND c.active = 1 ${therapistClause}
+  `).get(...values);
+}
+
 export async function canSeeClient(user, clientId) {
   if (user.role !== "therapist") {
     const row = await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ? AND active = 1")
@@ -33,7 +113,7 @@ export async function createClient(tenantId, values) {
 }
 
 export async function findClientCrmFields(id, tenantId) {
-  return await db.prepare("SELECT stage, source, tags FROM clients WHERE id = ? AND tenant_id = ?").get(id, tenantId);
+  return await db.prepare("SELECT stage, source, tags, notes FROM clients WHERE id = ? AND tenant_id = ?").get(id, tenantId);
 }
 
 export async function updateClient(id, tenantId, values) {
@@ -90,6 +170,17 @@ export async function listClientFiles(clientId, tenantId) {
     FROM client_files
     WHERE tenant_id = ? AND active = 1 AND client_id = ?
     ORDER BY id DESC
+  `).all(tenantId, clientId);
+}
+
+export async function listClientConsentSignatures(clientId, tenantId) {
+  return await db.prepare(`
+    SELECT s.id, s.template_id AS templateId, s.appointment_id AS appointmentId,
+           s.signer_name AS signerName, s.signed_at AS signedAt, t.title AS templateTitle
+    FROM consent_signatures s
+    JOIN consent_templates t ON t.id = s.template_id AND t.tenant_id = s.tenant_id
+    WHERE s.tenant_id = ? AND s.client_id = ?
+    ORDER BY s.signed_at DESC, s.id DESC
   `).all(tenantId, clientId);
 }
 
