@@ -3,6 +3,7 @@ import { apiNotFound } from "../shared/http/api-not-found.js";
 import { requirePermission } from "../services/permissions.service.js";
 import {
   addAppointment,
+  changeAppointmentStatus,
   editAppointment,
   getAppointment,
   getAppointmentQueue,
@@ -29,7 +30,7 @@ export async function handleAppointmentsRoute(req, res, url) {
   }
   const id = parts[2] ? Number(parts[2]) : null;
 
-  if (id && parts[3]) {
+  if (id && parts[3] && parts[3] !== "status") {
     apiNotFound(res);
     return true;
   }
@@ -61,6 +62,12 @@ export async function handleAppointmentsRoute(req, res, url) {
 
   if (req.method === "PUT" && id) {
     const result = await editAppointment(permission.user, id, await readJsonBody(req));
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (req.method === "PATCH" && id && parts[3] === "status") {
+    const result = await changeAppointmentStatus(permission.user, id, await readJsonBody(req));
     json(res, result.status, result.body);
     return true;
   }

@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS crm_events (
   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
   client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE,
   user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  appointment_id BIGINT,
   type TEXT NOT NULL,
   description TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -293,6 +294,21 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMPTZ;
 ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'crm_events_appointment_id_fkey'
+      AND conrelid = 'crm_events'::regclass
+  ) THEN
+    ALTER TABLE crm_events
+      ADD CONSTRAINT crm_events_appointment_id_fkey
+      FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL;
+  END IF;
+END;
+$$;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE clinic_settings ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE;

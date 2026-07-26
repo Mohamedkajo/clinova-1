@@ -1,6 +1,7 @@
 import {
+  addAppointmentTimelineEvent,
+  appointmentClientAssignedTo,
   appointmentClientExists,
-  appointmentAssignment,
   appointmentServiceExists,
   appointmentTherapistExists,
   archiveAppointment,
@@ -8,6 +9,7 @@ import {
   createAppointment,
   findConsentSignature,
   findAppointmentRow,
+  findAppointmentForStatus,
   findServiceCategory,
   findServiceForConflict,
   listAppointmentRows,
@@ -15,7 +17,9 @@ import {
   listQueuedAppointmentRows,
   listConsentTemplatesForCategory,
   updateAppointment,
+  updateAppointmentStatus,
 } from "../repositories/appointments.repository.js";
+import { permissions } from "../repositories/permissions.repository.js";
 import { clinicSettings } from "../repositories/settings.repository.js";
 import { isValidIsoDate, isValidTime } from "../shared/validation/date-time.js";
 
@@ -108,8 +112,8 @@ function validateAppointmentDateTime(body) {
   return null;
 }
 
-function appointmentFromRow(row) {
-  return {
+function appointmentFromRow(row, user) {
+  const appointment = {
     id: row.id,
     clientId: row.client_id,
     clientName: `${row.fname} ${row.lname}`,
@@ -121,26 +125,31 @@ function appointmentFromRow(row) {
     date: row.date,
     time: row.time,
     status: row.status,
-    notes: row.notes,
     duration: row.duration,
     price: row.price,
-    paymentStatus: row.payment_status || "unpaid",
-    paidAmount: Number(row.paid_amount || 0),
   };
+  if (permissions.clients_clinical_read.includes(user.role)) appointment.notes = row.notes;
+  if (permissions.clients_financial_read.includes(user.role)) {
+    appointment.paymentStatus = row.payment_status || "unpaid";
+    appointment.paidAmount = Number(row.paid_amount || 0);
+  }
+  return appointment;
 }
 
-async function appointmentConflict({ id, tenantId, date, time, serviceId }) {
+async function appointmentConflict({ id, tenantId, date, time, serviceId, therapistId }) {
   const service = await findServiceForConflict(serviceId, tenantId);
   if (!service) return null;
   const start = toMinutes(time);
   const end = start + service.duration;
-  const rows = await listConflictingAppointmentRows({ tenantId, date, categoryId: service.category_id, id });
+  const rows = await listConflictingAppointmentRows({ tenantId, date, categoryId: service.category_id, therapistId, id });
   for (const row of rows) {
     const otherStart = toMinutes(row.time);
     const otherEnd = otherStart + row.duration;
     if (!(end <= otherStart || start >= otherEnd)) {
       return {
-        code: "appointment_category_conflict",
+        code: Number(row.category_id) === Number(service.category_id)
+          ? "appointment_category_conflict"
+          : "appointment_therapist_conflict",
         serviceName: row.service_name,
         clientName: `${row.fname} ${row.lname}`,
         time: row.time,
@@ -185,6 +194,9 @@ async function validateAppointmentWrite(user, id, values) {
   if (!await appointmentClientExists(values.clientId, user.tenantId)) {
     return { status: 404, body: { error: "Client not found." } };
   }
+  if (user.role === "therapist" && !await appointmentClientAssignedTo(values.clientId, user.tenantId, user.id)) {
+    return { status: 404, body: { error: "Client not found." } };
+  }
   const service = await findServiceForConflict(values.serviceId, user.tenantId);
   if (!service) {
     return { status: 404, body: { error: "Service not found." } };
@@ -214,7 +226,7 @@ async function validateAppointmentWrite(user, id, values) {
     serviceId: values.serviceId,
     therapistId: values.therapistId,
   });
-  if (conflict) return { status: 409, body: { error: "appointment_category_conflict", details: conflict } };
+  if (conflict) return { status: 409, body: { error: conflict.code, details: conflict } };
 
   if ((values.status || "pending") === "done") {
     const missingConsents = await missingLegalConsents({
@@ -232,13 +244,13 @@ async function validateAppointmentWrite(user, id, values) {
 }
 
 export async function getAppointments(user) {
-  return { status: 200, body: (await listAppointmentRows(user)).map(appointmentFromRow) };
+  return { status: 200, body: (await listAppointmentRows(user)).map((row) => appointmentFromRow(row, user)) };
 }
 
 export async function getAppointment(user, id) {
   const row = await findAppointmentRow(user, id);
   if (!row) return { status: 404, body: { error: "Appointment not found." } };
-  return { status: 200, body: appointmentFromRow(row) };
+  return { status: 200, body: appointmentFromRow(row, user) };
 }
 
 export async function getAppointmentQueue(user, requestedDate = "") {
@@ -248,7 +260,7 @@ export async function getAppointmentQueue(user, requestedDate = "") {
   }
   return {
     status: 200,
-    body: { date, items: (await listQueuedAppointmentRows(user, date)).map(appointmentFromRow) },
+    body: { date, items: (await listQueuedAppointmentRows(user, date)).map((row) => appointmentFromRow(row, user)) },
   };
 }
 
@@ -271,14 +283,23 @@ export async function addAppointment(user, body) {
   if (validation) return validation;
 
   const id = await createAppointment(user.tenantId, values);
+  await addAppointmentTimelineEvent({
+    tenantId: user.tenantId,
+    clientId: values.clientId,
+    userId: user.id,
+    appointmentId: id,
+    type: "appointment_created",
+    description: `Appointment booked for ${values.date} ${values.time}`,
+  });
   await auditAppointment(user.id, "create", id, user.tenantId);
   return { status: 201, body: { id } };
 }
 
 export async function editAppointment(user, id, body) {
+  let existing = null;
   if (user.role === "therapist") {
-    const appointment = await appointmentAssignment(id, user.tenantId);
-    if (!appointment || Number(appointment.therapistId) !== Number(user.id)) {
+    existing = await findAppointmentForStatus(id, user.tenantId);
+    if (!existing || Number(existing.therapist_id) !== Number(user.id)) {
       return { status: 404, body: { error: "Appointment not found." } };
     }
   }
@@ -292,14 +313,62 @@ export async function editAppointment(user, id, body) {
   const enumValidation = validateAppointmentEnums(body);
   if (enumValidation) return enumValidation;
 
+  existing ||= await findAppointmentForStatus(id, user.tenantId);
+  if (!existing) return { status: 404, body: { error: "Appointment not found." } };
   const values = appointmentValues(user, body);
   const validation = await validateAppointmentWrite(user, id, values);
   if (validation) return validation;
 
   const changes = await updateAppointment(id, user.tenantId, values);
   if (!changes) return { status: 404, body: { error: "Appointment not found." } };
+  if (existing.status !== values.status) {
+    await addAppointmentTimelineEvent({
+      tenantId: user.tenantId,
+      clientId: values.clientId,
+      userId: user.id,
+      appointmentId: id,
+      type: "appointment_status_changed",
+      description: `${existing.status} -> ${values.status}`,
+    });
+  }
   await auditAppointment(user.id, "update", id, user.tenantId);
   return { status: 200, body: { ok: true } };
+}
+
+export async function changeAppointmentStatus(user, id, body) {
+  if (!["pending", "done", "cancelled"].includes(body.status)) {
+    return { status: 400, body: { error: "Valid appointment status is required." } };
+  }
+  const appointment = await findAppointmentForStatus(id, user.tenantId);
+  if (!appointment || (user.role === "therapist" && Number(appointment.therapist_id) !== Number(user.id))) {
+    return { status: 404, body: { error: "Appointment not found." } };
+  }
+  if (appointment.status === body.status) {
+    return { status: 200, body: { ok: true, status: body.status } };
+  }
+  if (body.status === "done") {
+    const missingConsents = await missingLegalConsents({
+      tenantId: user.tenantId,
+      clientId: appointment.client_id,
+      appointmentId: id,
+      serviceId: appointment.service_id,
+    });
+    if (missingConsents.length) {
+      return { status: 409, body: { error: "consent_required", details: { missing: missingConsents } } };
+    }
+  }
+  const changes = await updateAppointmentStatus(id, user.tenantId, body.status);
+  if (!changes) return { status: 404, body: { error: "Appointment not found." } };
+  await addAppointmentTimelineEvent({
+    tenantId: user.tenantId,
+    clientId: appointment.client_id,
+    userId: user.id,
+    appointmentId: id,
+    type: "appointment_status_changed",
+    description: `${appointment.status} -> ${body.status}`,
+  });
+  await auditAppointment(user.id, "status", id, user.tenantId);
+  return { status: 200, body: { ok: true, status: body.status } };
 }
 
 export async function removeAppointment(user, id) {

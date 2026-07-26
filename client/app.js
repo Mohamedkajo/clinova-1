@@ -10,6 +10,7 @@ import {
   renderPatientProfile,
   renderPatientWorkspace,
 } from "./patient-workspace.js";
+import { renderBookingWorkflow } from "./booking-workflow.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -235,6 +236,7 @@ async function api(path, options = {}) {
     error.status = response.status;
     error.code = data.code || data.error || "";
     error.details = data.details || {};
+    error.data = data;
     throw error;
   }
   return data;
@@ -333,6 +335,21 @@ localizedError = function (err) {
       ar: "\u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0627\u0644\u0645\u0648\u0639\u062f \u0636\u0645\u0646 \u0633\u0627\u0639\u0627\u062a \u0639\u0645\u0644 \u0627\u0644\u0639\u064a\u0627\u062f\u0629",
       he: "\u05d4\u05ea\u05d5\u05e8 \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d1\u05ea\u05d5\u05da \u05e9\u05e2\u05d5\u05ea \u05d4\u05e2\u05d1\u05d5\u05d3\u05d4 \u05e9\u05dc \u05d4\u05de\u05e8\u05e4\u05d0\u05d4",
       en: "Appointment must be within clinic working hours",
+    },
+    appointment_category_conflict: {
+      ar: "يوجد موعد متعارض ضمن فئة الخدمة المختارة",
+      he: "קיים תור מתנגש בקטגוריית השירות שנבחרה",
+      en: "Another appointment conflicts with this service category",
+    },
+    appointment_therapist_conflict: {
+      ar: "المعالج لديه موعد آخر في هذا الوقت",
+      he: "למטפל/ת יש תור אחר בזמן זה",
+      en: "The therapist already has another appointment at this time",
+    },
+    CLIENT_DUPLICATE: {
+      ar: "يوجد مريض بنفس الهاتف أو البريد الإلكتروني",
+      he: "קיים מטופל עם אותו טלפון או אימייל",
+      en: "A patient with this phone or email already exists",
     },
     "Appointment date cannot be in the past.": {
       ar: "\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u062c\u0632 \u0645\u0648\u0639\u062f \u0641\u064a \u0648\u0642\u062a \u0645\u0636\u0649",
@@ -499,6 +516,19 @@ function bindAppointmentDrawer() {
   document.querySelectorAll("[data-close-appointment-drawer]").forEach((button) => button.addEventListener("click", closeAppointmentDrawer));
   const patientButton = document.querySelector("[data-appointment-patient]");
   if (patientButton) patientButton.addEventListener("click", () => openClientProfile(Number(patientButton.dataset.appointmentPatient)));
+  const statusForm = document.querySelector("[data-appointment-status-form]");
+  if (statusForm) statusForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const appointmentId = Number(statusForm.dataset.appointmentStatusForm);
+    try {
+      const body = Object.fromEntries(new FormData(statusForm));
+      await api(`/api/appointments/${appointmentId}/status`, { method: "PATCH", body });
+      await refreshAppointmentWorkspace({ renderLoading: false });
+      await openAppointmentDetails(appointmentId);
+    } catch (error) {
+      showCenterError(localizedError(error));
+    }
+  });
 }
 
 async function openAppointmentDetails(id) {
@@ -508,11 +538,143 @@ async function openAppointmentDetails(id) {
   bindAppointmentDrawer();
   try {
     const appointment = await api(`/api/appointments/${id}`);
-    root.innerHTML = renderAppointmentDetails({ language: state.lang, appointment });
+    root.innerHTML = renderAppointmentDetails({ language: state.lang, appointment, canChangeStatus: true });
   } catch (error) {
     root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "error", error: localizedError(error) });
   }
   bindAppointmentDrawer();
+}
+
+let bookingWorkflowSession = null;
+
+function availableBookingTherapists() {
+  const rows = (state.data.users || []).filter((user) => user.active !== false && user.role === "therapist");
+  return state.user.role === "therapist" ? rows.filter((user) => Number(user.id) === Number(state.user.id)) : rows;
+}
+
+function openBookingWorkflow(defaults = {}) {
+  const services = (state.data.services || []).filter((service) => service.active !== false);
+  const therapists = availableBookingTherapists();
+  bookingWorkflowSession = {
+    patientResults: [],
+    selectedPatient: null,
+    searching: false,
+    searched: false,
+    showCreate: false,
+    saving: false,
+    error: "",
+    values: {
+      patientQuery: "",
+      serviceId: defaults.serviceId || services[0]?.id || "",
+      therapistId: state.user.role === "therapist" ? state.user.id : defaults.therapistId || therapists[0]?.id || "",
+      date: defaults.date || state.calendarDate || new Date().toISOString().slice(0, 10),
+      time: defaults.time || clinicWorkStart(),
+      notes: defaults.notes || "",
+    },
+  };
+
+  const renderWorkflow = () => {
+    const session = bookingWorkflowSession;
+    const root = document.getElementById("modalRoot");
+    if (!session || !root) return;
+    root.innerHTML = renderBookingWorkflow({
+      language: state.lang,
+      ...session,
+      services,
+      therapists,
+      canCreatePatient: ["admin", "reception"].includes(state.user.role),
+    });
+    root.querySelector("[data-close-booking]")?.addEventListener("click", () => {
+      bookingWorkflowSession = null;
+      closeModal();
+    });
+    root.querySelector("[data-booking-search]")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const query = String(new FormData(event.currentTarget).get("q") || "").trim();
+      session.values.patientQuery = query;
+      session.searching = true;
+      session.searched = true;
+      session.error = "";
+      renderWorkflow();
+      try {
+        const result = await api(`/api/clients/workspace?q=${encodeURIComponent(query)}&page=1&pageSize=10`);
+        session.patientResults = result.items || [];
+      } catch (error) {
+        session.patientResults = [];
+        session.error = localizedError(error);
+      } finally {
+        session.searching = false;
+        renderWorkflow();
+      }
+    });
+    root.querySelectorAll("[data-booking-patient]").forEach((button) => button.addEventListener("click", () => {
+      session.selectedPatient = session.patientResults.find((patient) => Number(patient.id) === Number(button.dataset.bookingPatient)) || null;
+      session.showCreate = false;
+      session.error = "";
+      renderWorkflow();
+    }));
+    root.querySelector("[data-booking-show-create]")?.addEventListener("click", () => {
+      session.showCreate = true;
+      renderWorkflow();
+    });
+    root.querySelector("[data-booking-create-patient]")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      session.error = "";
+      try {
+        const body = Object.fromEntries(new FormData(event.currentTarget));
+        body.therapistId = Number(session.values.therapistId || 0) || null;
+        const created = await api("/api/clients", { method: "POST", body });
+        session.selectedPatient = {
+          id: created.id,
+          name: `${body.fname} ${body.lname}`.trim(),
+          phone: body.phone,
+          email: body.email || "",
+        };
+        session.patientResults = [session.selectedPatient];
+        session.showCreate = false;
+      } catch (error) {
+        session.error = localizedError(error);
+      }
+      renderWorkflow();
+    });
+    const bookingForm = root.querySelector("[data-booking-form]");
+    bookingForm?.addEventListener("change", (event) => {
+      const values = Object.fromEntries(new FormData(bookingForm));
+      session.values = { ...session.values, ...values };
+      if (event.target?.name === "serviceId") renderWorkflow();
+    });
+    bookingForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = Object.fromEntries(new FormData(bookingForm));
+      session.values = { ...session.values, ...fields };
+      session.error = "";
+      session.saving = true;
+      renderWorkflow();
+      try {
+        const body = {
+          clientId: Number(session.selectedPatient?.id || 0),
+          serviceId: Number(fields.serviceId || 0),
+          therapistId: Number(fields.therapistId || 0),
+          date: fields.date,
+          time: fields.time,
+          status: "pending",
+          notes: fields.notes || "",
+        };
+        await api("/api/appointments", { method: "POST", body });
+        bookingWorkflowSession = null;
+        state.calendarDate = body.date;
+        closeModal();
+        setProtectedRoute("calendar", { render: false });
+        await refreshAppointmentWorkspace();
+      } catch (error) {
+        session.saving = false;
+        session.error = localizedError(error);
+        renderWorkflow();
+      }
+    });
+  };
+
+  renderWorkflow();
 }
 
 function bindPageActions() {
@@ -2842,6 +3004,7 @@ function select(name, label, options = [], value = "", required = true) {
 }
 
 openForm = function (resource, id = null, defaults = {}) {
+  if (resource === "appointments" && !id) return openBookingWorkflow(defaults);
   const row = id ? (state.data[resource] || []).find((item) => Number(item.id) === Number(id)) : defaults;
   const he = state.lang === "he";
   document.getElementById("modalRoot").innerHTML = html`
@@ -2986,6 +3149,7 @@ function renderFoundationShell() {
             </div>
           </div>
           <div class="topbar-actions foundation-actions">
+            ${topActionI18n()}
             ${renderFoundationLanguagePicker()}
             <details class="user-menu">
               <summary aria-label="${escapeAttr(foundationText(state.lang, "shell.userMenu"))}"><span class="user-avatar">${escapeHtml((state.user.name || state.user.username || "C").trim().slice(0, 1).toUpperCase())}</span><span class="user-menu-name">${safeUserName}</span></summary>
@@ -3820,6 +3984,7 @@ const openClientProfileLegacy = async function (id) {
 
 topActionI18n = function () {
   if (state.user?.platformOwner) return "";
+  if (state.page === "appointments" && state.lang === "en") return '<button class="btn" data-new="appointments">New appointment</button>';
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${uiText("موعد جديد", "תור חדש")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${uiText("عميل جديد", "לקוח חדש")}</button>`;
   if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${uiText("رفع PDF", "העלאת PDF")}</button>`;

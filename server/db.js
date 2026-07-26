@@ -279,6 +279,7 @@ async function initSqlite() {
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
       client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
       type TEXT NOT NULL,
       description TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -427,6 +428,7 @@ async function initSqlite() {
   await ensureSqliteColumn("clients", "last_contacted_at", "TEXT");
   await ensureSqliteColumn("crm_tasks", "tenant_id", "INTEGER NOT NULL DEFAULT 1");
   await ensureSqliteColumn("crm_events", "tenant_id", "INTEGER NOT NULL DEFAULT 1");
+  await ensureSqliteColumn("crm_events", "appointment_id", "INTEGER REFERENCES appointments(id) ON DELETE SET NULL");
   await ensureSqliteColumn("appointments", "tenant_id", "INTEGER NOT NULL DEFAULT 1");
   await ensureSqliteColumn("clinic_settings", "tenant_id", "INTEGER NOT NULL DEFAULT 1");
   await migrateSqliteClinicSettingsPrimaryKey();

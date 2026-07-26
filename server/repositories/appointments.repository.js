@@ -44,20 +44,25 @@ export async function listQueuedAppointmentRows(user, date) {
 }
 
 export async function findServiceForConflict(serviceId, tenantId) {
-  return await db.prepare("SELECT duration, category_id, name FROM services WHERE id = ? AND tenant_id = ?")
+  return await db.prepare("SELECT duration, category_id, name FROM services WHERE id = ? AND tenant_id = ? AND active = 1")
     .get(serviceId, tenantId);
 }
 
 export async function appointmentClientExists(clientId, tenantId) {
-  return Boolean(await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ?").get(clientId, tenantId));
+  return Boolean(await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ? AND active = 1").get(clientId, tenantId));
+}
+
+export async function appointmentClientAssignedTo(clientId, tenantId, therapistId) {
+  return Boolean(await db.prepare("SELECT id FROM clients WHERE id = ? AND tenant_id = ? AND active = 1 AND therapist_id = ?")
+    .get(clientId, tenantId, therapistId));
 }
 
 export async function appointmentServiceExists(serviceId, tenantId) {
-  return Boolean(await db.prepare("SELECT id FROM services WHERE id = ? AND tenant_id = ?").get(serviceId, tenantId));
+  return Boolean(await db.prepare("SELECT id FROM services WHERE id = ? AND tenant_id = ? AND active = 1").get(serviceId, tenantId));
 }
 
 export async function appointmentTherapistExists(therapistId, tenantId) {
-  return Boolean(await db.prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ?").get(therapistId, tenantId));
+  return Boolean(await db.prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ? AND active = 1 AND role = 'therapist'").get(therapistId, tenantId));
 }
 
 export async function appointmentAssignment(id, tenantId) {
@@ -65,14 +70,15 @@ export async function appointmentAssignment(id, tenantId) {
     .get(id, tenantId);
 }
 
-export async function listConflictingAppointmentRows({ tenantId, date, categoryId, id }) {
+export async function listConflictingAppointmentRows({ tenantId, date, categoryId, therapistId, id }) {
   return await db.prepare(`
-    SELECT a.*, s.duration, s.name AS service_name, c.fname, c.lname
+    SELECT a.*, s.duration, s.name AS service_name, s.category_id, c.fname, c.lname
     FROM appointments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = a.client_id
-    WHERE a.tenant_id = ? AND a.date = ? AND a.status != 'cancelled' AND a.active = 1 AND s.category_id = ? AND a.id != ?
-  `).all(tenantId, date, categoryId, id || 0);
+    WHERE a.tenant_id = ? AND a.date = ? AND a.status != 'cancelled' AND a.active = 1
+      AND (s.category_id = ? OR a.therapist_id = ?) AND a.id != ?
+  `).all(tenantId, date, categoryId, therapistId, id || 0);
 }
 
 export async function findServiceCategory(serviceId, tenantId) {
@@ -107,6 +113,28 @@ export async function updateAppointment(id, tenantId, values) {
   const result = await db.prepare("UPDATE appointments SET client_id = ?, service_id = ?, therapist_id = ?, date = ?, time = ?, status = ?, payment_status = ?, paid_amount = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
     .run(values.clientId, values.serviceId, values.therapistId, values.date, values.time, values.status, values.paymentStatus, values.paidAmount, values.notes, id, tenantId);
   return result.changes;
+}
+
+export async function findAppointmentForStatus(id, tenantId) {
+  return await db.prepare(`
+    SELECT a.*, s.name AS service_name
+    FROM appointments a
+    JOIN services s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+    WHERE a.id = ? AND a.tenant_id = ? AND a.active = 1
+  `).get(id, tenantId);
+}
+
+export async function updateAppointmentStatus(id, tenantId, status) {
+  const result = await db.prepare("UPDATE appointments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ? AND active = 1")
+    .run(status, id, tenantId);
+  return result.changes;
+}
+
+export async function addAppointmentTimelineEvent({ tenantId, clientId, userId, appointmentId, type, description }) {
+  await db.prepare(`
+    INSERT INTO crm_events (tenant_id, client_id, user_id, appointment_id, type, description)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(tenantId, clientId, userId, appointmentId, type, description);
 }
 
 export async function archiveAppointment(id, tenantId) {

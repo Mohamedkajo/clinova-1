@@ -576,10 +576,17 @@ test("invalid date and time inputs return controlled validation errors", async (
 
 test("appointment booking rejects past dates and times outside clinic working hours", async () => {
   const { client: clinicAdmin } = await loginAs(clinicServer.baseUrl, "admin");
+  const bootstrap = await clinicAdmin.get("/api/bootstrap");
+  const therapist = bootstrap.body.users.find((user) => user.role === "therapist");
+  assert.ok(therapist?.id);
+  const patient = await clinicAdmin.post("/api/clients", {
+    body: { fname: "Date", lname: "Validation", phone: `055${String(Date.now()).slice(-7)}`, therapistId: therapist.id },
+  });
+  assert.equal(patient.status, 201);
   const appointmentBody = {
-    clientId: 1,
+    clientId: patient.body.id,
     serviceId: 1,
-    therapistId: 1,
+    therapistId: therapist.id,
     date: isoDateOffset(30),
     time: "10:00",
   };

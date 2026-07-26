@@ -47,6 +47,7 @@ export function createHttpClient(baseUrl) {
     },
     delete: (path, options) => request("DELETE", path, options),
     get: (path, options) => request("GET", path, options),
+    patch: (path, options) => request("PATCH", path, options),
     post: (path, options) => request("POST", path, options),
     put: (path, options) => request("PUT", path, options),
     request,

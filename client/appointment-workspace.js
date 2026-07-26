@@ -39,6 +39,8 @@ const copy = {
     detailsLoading: "טוען את פרטי התור…",
     detailsError: "לא הצלחנו לטעון את פרטי התור.",
     currentTime: "השעה הנוכחית",
+    changeStatus: "שינוי סטטוס",
+    saveStatus: "שמירת סטטוס",
   },
   ar: {
     day: "يوم",
@@ -78,6 +80,8 @@ const copy = {
     detailsLoading: "جارٍ تحميل تفاصيل الموعد…",
     detailsError: "تعذر تحميل تفاصيل الموعد.",
     currentTime: "الوقت الحالي",
+    changeStatus: "تغيير الحالة",
+    saveStatus: "حفظ الحالة",
   },
   en: {
     day: "Day",
@@ -117,6 +121,8 @@ const copy = {
     detailsLoading: "Loading appointment details…",
     detailsError: "The appointment details could not be loaded.",
     currentTime: "Current time",
+    changeStatus: "Change status",
+    saveStatus: "Save status",
   },
 };
 
@@ -341,7 +347,7 @@ export function renderAppointmentWorkspace({
   </div>`;
 }
 
-export function renderAppointmentDetails({ language = "he", status = "ready", appointment = null, error = "" } = {}) {
+export function renderAppointmentDetails({ language = "he", status = "ready", appointment = null, error = "", canChangeStatus = false } = {}) {
   let content = "";
   if (status === "loading") {
     content = `<div class="appointment-detail-boundary" aria-busy="true"><span class="boundary-spinner" aria-hidden="true"></span><p>${escapeHtml(workspaceText(language, "detailsLoading"))}</p></div>`;
@@ -359,6 +365,7 @@ export function renderAppointmentDetails({ language = "he", status = "ready", ap
         <div><dt>${escapeHtml(workspaceText(language, "assignedStaff"))}</dt><dd>${escapeHtml(appointment.therapistName || "—")}</dd></div>
       </dl>
       <section class="appointment-detail-notes"><h3>${escapeHtml(workspaceText(language, "notes"))}</h3><p>${escapeHtml(appointment.notes || workspaceText(language, "noNotes"))}</p></section>
+      ${canChangeStatus ? `<form class="appointment-status-form" data-appointment-status-form="${escapeAttribute(appointment.id)}"><label>${escapeHtml(workspaceText(language, "changeStatus"))}<select name="status">${["pending", "done", "cancelled"].map((value) => `<option value="${value}" ${appointment.status === value ? "selected" : ""}>${escapeHtml(statusLabel(language, value))}</option>`).join("")}</select></label><button class="btn" type="submit">${escapeHtml(workspaceText(language, "saveStatus"))}</button></form>` : ""}
       ${appointment.clientId ? `<button type="button" class="btn secondary" data-appointment-patient="${escapeAttribute(appointment.clientId)}">${escapeHtml(workspaceText(language, "openPatient"))}</button>` : ""}
     </div>`;
   }

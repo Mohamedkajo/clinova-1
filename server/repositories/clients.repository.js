@@ -112,6 +112,19 @@ export async function createClient(tenantId, values) {
   return result.lastInsertRowid;
 }
 
+export async function findDuplicateClient(tenantId, phone, email = "") {
+  const normalizedPhone = String(phone || "").trim();
+  const normalizedEmail = String(email || "").trim();
+  return await db.prepare(`
+    SELECT id, fname, lname, phone, email
+    FROM clients
+    WHERE tenant_id = ? AND active = 1
+      AND (phone = ? OR (? <> '' AND lower(COALESCE(email, '')) = lower(?)))
+    ORDER BY id
+    LIMIT 1
+  `).get(tenantId, normalizedPhone, normalizedEmail, normalizedEmail);
+}
+
 export async function findClientCrmFields(id, tenantId) {
   return await db.prepare("SELECT stage, source, tags, notes FROM clients WHERE id = ? AND tenant_id = ?").get(id, tenantId);
 }
@@ -131,14 +144,14 @@ export async function archiveClientAppointments(clientId, tenantId) {
     .run(clientId, tenantId);
 }
 
-export async function addCrmEvent({ tenantId, clientId, userId, type, description }) {
-  await db.prepare("INSERT INTO crm_events (tenant_id, client_id, user_id, type, description) VALUES (?, ?, ?, ?, ?)")
-    .run(tenantId, clientId || null, userId || null, type, description);
+export async function addCrmEvent({ tenantId, clientId, userId, appointmentId = null, type, description }) {
+  await db.prepare("INSERT INTO crm_events (tenant_id, client_id, user_id, appointment_id, type, description) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(tenantId, clientId || null, userId || null, appointmentId || null, type, description);
 }
 
 export async function listClientCrmEvents(clientId, tenantId) {
   return await db.prepare(`
-    SELECT e.id, e.client_id AS clientId, e.user_id AS userId, e.type, e.description,
+    SELECT e.id, e.client_id AS clientId, e.user_id AS userId, e.appointment_id AS appointmentId, e.type, e.description,
            e.created_at AS createdAt, u.name AS userName
     FROM crm_events e
     LEFT JOIN users u ON u.id = e.user_id

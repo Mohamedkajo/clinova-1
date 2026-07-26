@@ -8,6 +8,7 @@ import {
   createClient,
   findClientCrmFields,
   findClientProfileRow,
+  findDuplicateClient,
   listClientAppointments,
   listClientConsentSignatures,
   listClientCrmEvents,
@@ -191,6 +192,7 @@ function patientTimeline({ patientRow, appointmentRows, crmEvents, files, consen
     occurredAt: event.createdAt,
     description: event.description,
     actor: event.userName || null,
+    ...(event.appointmentId ? { related: { appointmentId: event.appointmentId } } : {}),
   }));
 
   if (!visibleCrmEvents.some((event) => event.type === "client_created")) {
@@ -337,6 +339,17 @@ export async function addClient(user, body) {
   }
   const stageValidation = validateClientStage(body);
   if (stageValidation) return stageValidation;
+  const duplicate = await findDuplicateClient(user.tenantId, body.phone, body.email);
+  if (duplicate) {
+    return {
+      status: 409,
+      body: {
+        error: "Patient with this phone or email already exists.",
+        code: "CLIENT_DUPLICATE",
+        existingPatientId: duplicate.id,
+      },
+    };
+  }
   if (!await clientTherapistExists(body.therapistId, user.tenantId)) {
     return { status: 404, body: { error: "Therapist not found." } };
   }
