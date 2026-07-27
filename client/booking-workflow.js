@@ -24,6 +24,8 @@ function optionRows(items, value, label) {
   return items.map((item) => `<option value="${attr(item.id)}" ${Number(item.id) === Number(value) ? "selected" : ""}>${safe(label(item))}</option>`).join("");
 }
 
+const requiredMarker = ' <span class="required-marker" aria-hidden="true">*</span>';
+
 export function renderBookingWorkflow({
   language = "en",
   patientResults = [],
@@ -37,17 +39,18 @@ export function renderBookingWorkflow({
   canCreatePatient = false,
   saving = false,
   error = "",
+  success = "",
 } = {}) {
   const duration = selectedServiceDuration(services, values.serviceId);
   const patientResultsMarkup = patientResults.map((patient) => `<button type="button" class="booking-patient-result" data-booking-patient="${attr(patient.id)}"><span><strong>${safe(patient.name || `${patient.firstName || ""} ${patient.lastName || ""}`.trim())}</strong><small>${safe(patient.phone || "")}${patient.email ? ` · ${safe(patient.email)}` : ""}</small></span><b>${safe(text(language, "select"))}</b></button>`).join("");
-  const createPanel = showCreate && canCreatePatient ? `<form class="booking-create-patient" data-booking-create-patient><h4>${safe(text(language, "createTitle"))}</h4><div class="booking-form-grid"><label>${safe(text(language, "firstName"))}<input name="fname" required></label><label>${safe(text(language, "lastName"))}<input name="lname" required></label><label>${safe(text(language, "phone"))}<input name="phone" required></label><label>${safe(text(language, "email"))}<input name="email" type="email"></label></div><button class="btn secondary" type="submit">${safe(text(language, "createPatient"))}</button></form>` : "";
+  const createPanel = showCreate && canCreatePatient ? `<form class="booking-create-patient" data-booking-create-patient><h4>${safe(text(language, "createTitle"))}</h4><div class="booking-form-grid"><label for="bookingFirstName"><span>${safe(text(language, "firstName"))}${requiredMarker}</span><input id="bookingFirstName" name="fname" required aria-required="true"></label><label for="bookingLastName"><span>${safe(text(language, "lastName"))}${requiredMarker}</span><input id="bookingLastName" name="lname" required aria-required="true"></label><label for="bookingPhone"><span>${safe(text(language, "phone"))}${requiredMarker}</span><input id="bookingPhone" name="phone" required aria-required="true"></label><label for="bookingEmail"><span>${safe(text(language, "email"))}</span><input id="bookingEmail" name="email" type="email"></label></div><button class="btn secondary" type="submit">${safe(text(language, "createPatient"))}</button></form>` : "";
   const unavailable = !services.length ? text(language, "noServices") : !therapists.length ? text(language, "noTherapists") : "";
 
   return `<div class="modal booking-modal"><section class="modal-card booking-card" role="dialog" aria-modal="true" aria-labelledby="bookingTitle">
     <header class="modal-head"><h3 id="bookingTitle">${safe(text(language, "title"))}</h3><button type="button" class="btn ghost" data-close-booking>${safe(text(language, "close"))}</button></header>
     <div class="modal-body booking-body">
       <section class="booking-section"><h4>${safe(text(language, "patientStep"))}</h4>
-        <form class="booking-patient-search" data-booking-search><input name="q" value="${attr(values.patientQuery || "")}" placeholder="${attr(text(language, "search"))}" autocomplete="off" required><button class="btn secondary" type="submit">${safe(searching ? text(language, "searching") : text(language, "searchAction"))}</button></form>
+        <form class="booking-patient-search" data-booking-search><label class="sr-only" for="bookingPatientSearch">${safe(text(language, "search"))}</label><input id="bookingPatientSearch" name="q" value="${attr(values.patientQuery || "")}" placeholder="${attr(text(language, "search"))}" autocomplete="off" required aria-required="true"><button class="btn secondary" type="submit" ${searching ? 'disabled aria-disabled="true"' : ""}>${safe(searching ? text(language, "searching") : text(language, "searchAction"))}</button></form>
         ${selectedPatient ? `<div class="booking-selected-patient"><span>${safe(text(language, "selected"))}</span><strong>${safe(selectedPatient.name)}</strong><small>${safe(selectedPatient.phone || "")}${selectedPatient.email ? ` · ${safe(selectedPatient.email)}` : ""}</small></div>` : ""}
         <div class="booking-patient-results">${searching ? `<p class="muted">${safe(text(language, "searching"))}</p>` : patientResultsMarkup || (searched ? `<p class="muted">${safe(text(language, "noResults"))}</p>` : "")}</div>
         ${canCreatePatient && searched && !patientResults.length ? `<button class="btn ghost" type="button" data-booking-show-create>${safe(text(language, "createAction"))}</button>` : ""}
@@ -57,13 +60,14 @@ export function renderBookingWorkflow({
         <form data-booking-form>
           <input type="hidden" name="clientId" value="${attr(selectedPatient?.id || "")}">
           <div class="booking-form-grid">
-            <label>${safe(text(language, "service"))}<select name="serviceId" required>${optionRows(services, values.serviceId, (item) => item.name)}</select></label>
-            <label>${safe(text(language, "therapist"))}<select name="therapistId" required>${optionRows(therapists, values.therapistId, (item) => item.name || item.username)}</select></label>
-            <label>${safe(text(language, "date"))}<input name="date" type="date" value="${attr(values.date || "")}" required></label>
-            <label>${safe(text(language, "time"))}<input name="time" type="time" value="${attr(values.time || "")}" required></label>
-            <label>${safe(text(language, "duration"))}<output data-booking-duration>${safe(duration)} ${safe(text(language, "minutes"))}</output></label>
-            <label class="full">${safe(text(language, "notes"))}<textarea name="notes">${safe(values.notes || "")}</textarea></label>
+            <label for="bookingService"><span>${safe(text(language, "service"))}${requiredMarker}</span><select id="bookingService" name="serviceId" required aria-required="true">${optionRows(services, values.serviceId, (item) => item.name)}</select></label>
+            <label for="bookingTherapist"><span>${safe(text(language, "therapist"))}${requiredMarker}</span><select id="bookingTherapist" name="therapistId" required aria-required="true">${optionRows(therapists, values.therapistId, (item) => item.name || item.username)}</select></label>
+            <label for="bookingDate"><span>${safe(text(language, "date"))}${requiredMarker}</span><input id="bookingDate" name="date" type="date" value="${attr(values.date || "")}" required aria-required="true"></label>
+            <label for="bookingTime"><span>${safe(text(language, "time"))}${requiredMarker}</span><input id="bookingTime" name="time" type="time" value="${attr(values.time || "")}" required aria-required="true"></label>
+            <label for="bookingDuration"><span>${safe(text(language, "duration"))}</span><output id="bookingDuration" data-booking-duration aria-live="polite">${safe(duration)} ${safe(text(language, "minutes"))}</output></label>
+            <label class="full" for="bookingNotes"><span>${safe(text(language, "notes"))}</span><textarea id="bookingNotes" name="notes">${safe(values.notes || "")}</textarea></label>
           </div>
+          ${success ? `<p class="booking-success" role="status" aria-live="polite">${safe(success)}</p>` : ""}
           ${error || unavailable ? `<p class="booking-error" role="alert">${safe(error || unavailable)}</p>` : ""}
           <button class="btn" type="submit" ${saving || !selectedPatient || Boolean(unavailable) ? "disabled" : ""}>${safe(saving ? text(language, "saving") : text(language, "save"))}</button>
           ${!selectedPatient ? `<small class="muted">${safe(text(language, "patientRequired"))}</small>` : ""}

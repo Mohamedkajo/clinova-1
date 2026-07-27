@@ -1,11 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const envFile = process.env.NODE_ENV === "development" && existsSync(".env.development")
-  ? ".env.development"
-  : ".env";
+const envFile = process.env.CLINOVA_SKIP_ENV_FILE === "true"
+  ? ""
+  : process.env.NODE_ENV === "development" && existsSync(".env.development")
+    ? ".env.development"
+    : ".env";
 
-if (existsSync(envFile)) {
+if (envFile && existsSync(envFile)) {
   const lines = readFileSync(envFile, "utf8").split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();

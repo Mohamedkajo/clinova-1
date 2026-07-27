@@ -4,5 +4,6 @@ backups/
 logs/
 uploads/
 dev-data/
+.demo/
 .env
 *.log

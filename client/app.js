@@ -10,7 +10,7 @@ import {
   renderPatientProfile,
   renderPatientWorkspace,
 } from "./patient-workspace.js";
-import { renderBookingWorkflow } from "./booking-workflow.js";
+import { renderBookingWorkflow, selectedServiceDuration } from "./booking-workflow.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -49,7 +49,7 @@ const state = {
   mobileNavOpen: false,
 };
 
-const APP_VERSION = "1.6.2";
+const APP_VERSION = "1.8.0-alpha.1";
 
 let tr;
 let pageLabel;
@@ -300,9 +300,74 @@ function selectedWorkDays(value) {
   }
 }
 
+let modalReturnFocus = null;
+let modalKeydownCleanup = null;
+
+function beginModalInteraction() {
+  const root = document.getElementById("modalRoot");
+  if (!modalReturnFocus && !root?.children.length && document.activeElement instanceof HTMLElement) {
+    modalReturnFocus = document.activeElement;
+  }
+}
+
+function bindModalAccessibility({ onClose = closeModal, focusSelector = "" } = {}) {
+  const root = document.getElementById("modalRoot");
+  const dialog = root?.querySelector('[role="dialog"]');
+  modalKeydownCleanup?.();
+  modalKeydownCleanup = null;
+  if (!dialog) return;
+
+  const focusableSelector = [
+    "button:not([disabled])",
+    "input:not([disabled]):not([type='hidden'])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "a[href]",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(",");
+  const onKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...dialog.querySelectorAll(focusableSelector)]
+      .filter((element) => element.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  dialog.addEventListener("keydown", onKeydown);
+  modalKeydownCleanup = () => dialog.removeEventListener("keydown", onKeydown);
+
+  const focusTarget = focusSelector
+    ? dialog.querySelector(focusSelector)
+    : dialog.querySelector("[autofocus], input:not([type='hidden']), select, textarea, button");
+  queueMicrotask(() => focusTarget?.focus());
+}
+
 function closeModal() {
   const root = document.getElementById("modalRoot");
+  modalKeydownCleanup?.();
+  modalKeydownCleanup = null;
   if (root) root.innerHTML = "";
+  const returnTarget = modalReturnFocus;
+  modalReturnFocus = null;
+  queueMicrotask(() => {
+    if (returnTarget?.isConnected) returnTarget.focus();
+  });
 }
 
 function localizedError(err) {
@@ -310,16 +375,24 @@ function localizedError(err) {
   return err?.message || (state.lang === "he" ? "אירעה שגיאה" : "حدث خطأ");
 }
 
-function showCenterError(message) {
-  let alert = document.getElementById("centerError");
-  if (!alert) {
-    alert = document.createElement("div");
-    alert.id = "centerError";
-    alert.className = "center-error";
-    document.body.appendChild(alert);
-  }
+function showToast(message, tone = "error") {
+  document.getElementById("centerToast")?.remove();
+  const alert = document.createElement("div");
+  alert.id = "centerToast";
+  alert.className = `center-toast ${tone === "success" ? "center-success" : "center-error"}`;
+  alert.setAttribute("role", tone === "success" ? "status" : "alert");
+  alert.setAttribute("aria-live", tone === "success" ? "polite" : "assertive");
   alert.textContent = message;
-  window.setTimeout(() => alert.remove(), 3000);
+  document.body.appendChild(alert);
+  window.setTimeout(() => alert.remove(), 3200);
+}
+
+function showCenterError(message) {
+  showToast(message, "error");
+}
+
+function showCenterSuccess(message) {
+  showToast(message, "success");
 }
 
 localizedError = function (err) {
@@ -508,24 +581,31 @@ async function refreshPatientWorkspace({ renderLoading = true } = {}) {
 }
 
 function closeAppointmentDrawer() {
-  const root = document.getElementById("modalRoot");
-  if (root) root.innerHTML = "";
+  closeModal();
 }
 
 function bindAppointmentDrawer() {
   document.querySelectorAll("[data-close-appointment-drawer]").forEach((button) => button.addEventListener("click", closeAppointmentDrawer));
+  bindModalAccessibility({ onClose: closeAppointmentDrawer, focusSelector: ".appointment-drawer [data-close-appointment-drawer]" });
   const patientButton = document.querySelector("[data-appointment-patient]");
   if (patientButton) patientButton.addEventListener("click", () => openClientProfile(Number(patientButton.dataset.appointmentPatient)));
   const statusForm = document.querySelector("[data-appointment-status-form]");
   if (statusForm) statusForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (statusForm.getAttribute("aria-busy") === "true") return;
     const appointmentId = Number(statusForm.dataset.appointmentStatusForm);
+    const submitButton = statusForm.querySelector("[type='submit']");
+    statusForm.setAttribute("aria-busy", "true");
+    if (submitButton) submitButton.disabled = true;
     try {
       const body = Object.fromEntries(new FormData(statusForm));
       await api(`/api/appointments/${appointmentId}/status`, { method: "PATCH", body });
       await refreshAppointmentWorkspace({ renderLoading: false });
       await openAppointmentDetails(appointmentId);
+      showCenterSuccess(uiText("تم تحديث حالة الموعد.", "סטטוס התור עודכן.", "Appointment status updated."));
     } catch (error) {
+      statusForm.removeAttribute("aria-busy");
+      if (submitButton) submitButton.disabled = false;
       showCenterError(localizedError(error));
     }
   });
@@ -534,6 +614,7 @@ function bindAppointmentDrawer() {
 async function openAppointmentDetails(id) {
   const root = document.getElementById("modalRoot");
   if (!root) return;
+  beginModalInteraction();
   root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "loading" });
   bindAppointmentDrawer();
   try {
@@ -553,6 +634,7 @@ function availableBookingTherapists() {
 }
 
 function openBookingWorkflow(defaults = {}) {
+  beginModalInteraction();
   const services = (state.data.services || []).filter((service) => service.active !== false);
   const therapists = availableBookingTherapists();
   bookingWorkflowSession = {
@@ -563,6 +645,7 @@ function openBookingWorkflow(defaults = {}) {
     showCreate: false,
     saving: false,
     error: "",
+    success: "",
     values: {
       patientQuery: "",
       serviceId: defaults.serviceId || services[0]?.id || "",
@@ -573,7 +656,7 @@ function openBookingWorkflow(defaults = {}) {
     },
   };
 
-  const renderWorkflow = () => {
+  const renderWorkflow = (focusSelector = "") => {
     const session = bookingWorkflowSession;
     const root = document.getElementById("modalRoot");
     if (!session || !root) return;
@@ -583,6 +666,13 @@ function openBookingWorkflow(defaults = {}) {
       services,
       therapists,
       canCreatePatient: ["admin", "reception"].includes(state.user.role),
+    });
+    bindModalAccessibility({
+      onClose: () => {
+        bookingWorkflowSession = null;
+        closeModal();
+      },
+      focusSelector,
     });
     root.querySelector("[data-close-booking]")?.addEventListener("click", () => {
       bookingWorkflowSession = null;
@@ -595,7 +685,10 @@ function openBookingWorkflow(defaults = {}) {
       session.searching = true;
       session.searched = true;
       session.error = "";
-      renderWorkflow();
+      session.success = "";
+      const searchButton = event.currentTarget.querySelector("[type='submit']");
+      event.currentTarget.setAttribute("aria-busy", "true");
+      if (searchButton) searchButton.disabled = true;
       try {
         const result = await api(`/api/clients/workspace?q=${encodeURIComponent(query)}&page=1&pageSize=10`);
         session.patientResults = result.items || [];
@@ -604,22 +697,29 @@ function openBookingWorkflow(defaults = {}) {
         session.error = localizedError(error);
       } finally {
         session.searching = false;
-        renderWorkflow();
+        renderWorkflow("[name='q']");
       }
     });
     root.querySelectorAll("[data-booking-patient]").forEach((button) => button.addEventListener("click", () => {
       session.selectedPatient = session.patientResults.find((patient) => Number(patient.id) === Number(button.dataset.bookingPatient)) || null;
       session.showCreate = false;
       session.error = "";
-      renderWorkflow();
+      session.success = "";
+      renderWorkflow("[name='serviceId']");
     }));
     root.querySelector("[data-booking-show-create]")?.addEventListener("click", () => {
       session.showCreate = true;
-      renderWorkflow();
+      session.success = "";
+      renderWorkflow("[name='fname']");
     });
     root.querySelector("[data-booking-create-patient]")?.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (event.currentTarget.getAttribute("aria-busy") === "true") return;
       session.error = "";
+      session.success = "";
+      const createButton = event.currentTarget.querySelector("[type='submit']");
+      event.currentTarget.setAttribute("aria-busy", "true");
+      if (createButton) createButton.disabled = true;
       try {
         const body = Object.fromEntries(new FormData(event.currentTarget));
         body.therapistId = Number(session.values.therapistId || 0) || null;
@@ -632,24 +732,33 @@ function openBookingWorkflow(defaults = {}) {
         };
         session.patientResults = [session.selectedPatient];
         session.showCreate = false;
+        session.success = uiText("تم إنشاء المريض واختياره.", "המטופל נוצר ונבחר.", "Patient created and selected.");
       } catch (error) {
         session.error = localizedError(error);
       }
-      renderWorkflow();
+      renderWorkflow(session.error ? ".booking-error" : "[name='serviceId']");
     });
     const bookingForm = root.querySelector("[data-booking-form]");
     bookingForm?.addEventListener("change", (event) => {
       const values = Object.fromEntries(new FormData(bookingForm));
       session.values = { ...session.values, ...values };
-      if (event.target?.name === "serviceId") renderWorkflow();
+      if (event.target?.name === "serviceId") {
+        const duration = selectedServiceDuration(services, values.serviceId);
+        const output = bookingForm.querySelector("[data-booking-duration]");
+        if (output) output.textContent = `${duration} ${uiText("دقيقة", "דקות", "minutes")}`;
+      }
     });
     bookingForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (bookingForm.getAttribute("aria-busy") === "true") return;
       const fields = Object.fromEntries(new FormData(bookingForm));
       session.values = { ...session.values, ...fields };
       session.error = "";
+      session.success = "";
       session.saving = true;
-      renderWorkflow();
+      const submitButton = bookingForm.querySelector("[type='submit']");
+      bookingForm.setAttribute("aria-busy", "true");
+      if (submitButton) submitButton.disabled = true;
       try {
         const body = {
           clientId: Number(session.selectedPatient?.id || 0),
@@ -666,15 +775,16 @@ function openBookingWorkflow(defaults = {}) {
         closeModal();
         setProtectedRoute("calendar", { render: false });
         await refreshAppointmentWorkspace();
+        showCenterSuccess(uiText("تم حفظ الموعد.", "התור נשמר.", "Appointment saved."));
       } catch (error) {
         session.saving = false;
         session.error = localizedError(error);
-        renderWorkflow();
+        renderWorkflow(".booking-error");
       }
     });
   };
 
-  renderWorkflow();
+  renderWorkflow("[name='q']");
 }
 
 function bindPageActions() {
@@ -987,6 +1097,7 @@ pageSubtitle = function () {
 function bindPatientProfile(id) {
   const root = document.getElementById("modalRoot");
   root?.querySelectorAll("[data-close-patient-profile]").forEach((button) => button.addEventListener("click", closeModal));
+  bindModalAccessibility({ focusSelector: ".patient-profile-panel [data-close-patient-profile]" });
   root?.querySelector("[data-patient-retry]")?.addEventListener("click", () => void openClientProfile(id));
   root?.querySelectorAll("[data-patient-appointment-details]").forEach((button) => button.addEventListener("click", () => void openAppointmentDetails(Number(button.dataset.patientAppointmentDetails))));
   const noteForm = root?.querySelector("#clientNoteForm");
@@ -1023,6 +1134,7 @@ function bindPatientProfile(id) {
 openClientProfile = async function (id) {
   const root = document.getElementById("modalRoot");
   if (!root) return;
+  beginModalInteraction();
   root.innerHTML = renderPatientProfile({ language: state.lang, status: "loading" });
   bindPatientProfile(id);
   try {
@@ -2685,6 +2797,60 @@ const cleanI18n = {
     payment: { unpaid: "לא שולם", paid: "שולם", deposit: "מקדמה" },
     table: { date: "תאריך", time: "שעה", client: "לקוח", service: "שירות", therapist: "מטפל", price: "מחיר", payment: "תשלום", status: "סטטוס" },
   },
+  en: {
+    system: "Clinic management",
+    platformSystem: "Platform administration",
+    language: "Language",
+    logout: "Sign out",
+    add: "Add",
+    edit: "Edit",
+    delete: "Delete",
+    save: "Save",
+    close: "Close",
+    noData: "No data",
+    quickSearch: "Quick search...",
+    actions: "Actions",
+    yes: "Yes",
+    no: "No",
+    labels: {
+      platform: "Clinics",
+      platformBilling: "Billing",
+      platformReports: "Platform reports",
+      platformHealth: "System health",
+      dashboard: "Dashboard",
+      calendar: "Calendar",
+      appointments: "Appointments",
+      clients: "Patients",
+      crm: "Patient relations",
+      whatsapp: "WhatsApp",
+      consents: "Legal forms",
+      feedback: "Feedback",
+      gifts: "Gifts",
+      categories: "Categories",
+      services: "Treatments",
+      users: "Team",
+      reports: "Reports",
+      audit: "Activity log",
+      settings: "Settings",
+      billing: "Finances",
+    },
+    subtitles: {
+      dashboard: "A quick view of today's clinic activity",
+      calendar: "Appointments by day",
+      appointments: "Appointments, attendance, and payment",
+      clients: "Patient records and contact details",
+      crm: "Patient follow-up and tasks",
+      whatsapp: "WhatsApp templates and message log",
+      users: "Team and permissions",
+      reports: "Performance and revenue reports",
+      audit: "Recent system activity",
+      settings: "Clinic and account settings",
+    },
+    roles: { admin: "Administrator", reception: "Reception", therapist: "Therapist" },
+    status: { pending: "Pending", done: "Completed", cancelled: "Cancelled", open: "Open", paid: "Paid", void: "Void" },
+    payment: { unpaid: "Unpaid", paid: "Paid", deposit: "Deposit" },
+    table: { date: "Date", time: "Time", client: "Patient", service: "Treatment", therapist: "Therapist", price: "Price", payment: "Payment", status: "Status" },
+  },
 };
 
 function clean(key) {
@@ -2991,48 +3157,78 @@ renderBilling = function () {
 }
 
 function field(name, label, value = "", type = "text", required = true, extraClass = "") {
+  const id = `field-${name}`;
+  const labelMarkup = `${escapeHtml(label)}${required ? ' <span class="required-marker" aria-hidden="true">*</span>' : ""}`;
   const safeValue = escapeAttr(value ?? "");
   if (type === "textarea") {
-    return `<div class="field ${escapeAttr(extraClass)}"><label>${escapeHtml(label)}</label><textarea name="${escapeAttr(name)}" ${required ? "required" : ""}>${safeValue}</textarea></div>`;
+    return `<div class="field ${escapeAttr(extraClass)}"><label for="${escapeAttr(id)}">${labelMarkup}</label><textarea id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required aria-required="true"' : ""}>${escapeHtml(value ?? "")}</textarea></div>`;
   }
-  return `<div class="field ${escapeAttr(extraClass)}"><label>${escapeHtml(label)}</label><input name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${safeValue}" ${required ? "required" : ""}></div>`;
+  return `<div class="field ${escapeAttr(extraClass)}"><label for="${escapeAttr(id)}">${labelMarkup}</label><input id="${escapeAttr(id)}" name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${safeValue}" ${required ? 'required aria-required="true"' : ""}></div>`;
 }
 
 function select(name, label, options = [], value = "", required = true) {
+  const id = `field-${name}`;
   const current = String(value ?? "");
-  return `<div class="field"><label>${escapeHtml(label)}</label><select name="${escapeAttr(name)}" ${required ? "required" : ""}>${options.map(([id, text]) => `<option value="${escapeAttr(id)}" ${String(id) === current ? "selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select></div>`;
+  return `<div class="field"><label for="${escapeAttr(id)}">${escapeHtml(label)}${required ? ' <span class="required-marker" aria-hidden="true">*</span>' : ""}</label><select id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required aria-required="true"' : ""}>${options.map(([optionId, text]) => `<option value="${escapeAttr(optionId)}" ${String(optionId) === current ? "selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select></div>`;
 }
 
 openForm = function (resource, id = null, defaults = {}) {
   if (resource === "appointments" && !id) return openBookingWorkflow(defaults);
+  beginModalInteraction();
   const row = id ? (state.data[resource] || []).find((item) => Number(item.id) === Number(id)) : defaults;
-  const he = state.lang === "he";
+  const clientTitle = id
+    ? uiText("تعديل المريض", "עריכת מטופל", "Edit patient")
+    : uiText("مريض جديد", "מטופל חדש", "New patient");
+  const genericTitle = `${id ? uiText("تعديل", "עריכה", "Edit") : uiText("إضافة", "הוספה", "Add")} ${pageLabel(resource) || ""}`;
+  const title = resource === "clients" ? clientTitle : genericTitle;
   document.getElementById("modalRoot").innerHTML = html`
-    <div class="modal"><form class="modal-card" id="entityForm">
-      <div class="modal-head"><h3>${id ? (he ? "עריכה" : "تعديل") : (he ? "הוספה" : "إضافة")} ${pageLabel(resource) || ""}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
+    <div class="modal"><form class="modal-card" id="entityForm" role="dialog" aria-modal="true" aria-labelledby="entityFormTitle">
+      <div class="modal-head"><h3 id="entityFormTitle">${escapeHtml(title)}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
       <div class="modal-body">${formFieldsHe(resource, row || {})}</div>
-      <div class="modal-foot"><button class="btn">${clean("save")}</button><div id="formError" class="muted"></div></div>
+      <div class="modal-foot"><button class="btn" type="submit">${clean("save")}</button><div id="formError" class="form-message" role="alert" aria-live="assertive" tabindex="-1"></div></div>
     </form></div>`;
   document.getElementById("closeModal").addEventListener("click", closeModal);
+  bindModalAccessibility({ focusSelector: "[required]" });
   document.getElementById("entityForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
+    if (form.getAttribute("aria-busy") === "true") return;
+    const submitButton = form.querySelector("[type='submit']");
+    form.setAttribute("aria-busy", "true");
+    if (submitButton) submitButton.disabled = true;
     try {
-      const body = formPayload(resource, Object.fromEntries(new FormData(event.currentTarget)));
+      const body = formPayload(resource, Object.fromEntries(new FormData(form)));
       delete body.clientSearch;
-      await api(`/api/${resource}${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body });
+      const result = await api(`/api/${resource}${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body });
+      if (resource === "clients") {
+        const nextClient = { ...(row || {}), ...body, id: id || result.id, active: true };
+        state.data.clients = id
+          ? (state.data.clients || []).map((client) => Number(client.id) === Number(id) ? nextClient : client)
+          : [nextClient, ...(state.data.clients || [])];
+      }
       closeModal();
-      await loadData();
-      renderApp();
+      if (resource === "clients" && state.page === "clients") {
+        await refreshPatientWorkspace({ renderLoading: false });
+      } else {
+        await loadData();
+        renderApp();
+      }
+      showCenterSuccess(resource === "clients"
+        ? uiText("تم حفظ المريض.", "המטופל נשמר.", "Patient saved.")
+        : uiText("تم الحفظ.", "נשמר בהצלחה.", "Saved successfully."));
     } catch (err) {
       const message = localizedError(err);
-      document.getElementById("formError").textContent = message;
-      showCenterError(message);
+      form.removeAttribute("aria-busy");
+      if (submitButton) submitButton.disabled = false;
+      const errorBox = document.getElementById("formError");
+      errorBox.textContent = message;
+      errorBox.focus();
     }
   });
 }
 
 formFieldsHe = function (resource, row = {}) {
-  if (resource === "clients") return html`${field("fname", state.lang === "he" ? "שם פרטי" : "الاسم الأول", row.fname || "")}${field("lname", state.lang === "he" ? "שם משפחה" : "اسم العائلة", row.lname || "")}${field("phone", state.lang === "he" ? "טלפון" : "الهاتف", row.phone || "")}${field("email", state.lang === "he" ? "אימייל" : "البريد", row.email || "", "email", false)}${state.user?.role === "admin" ? field("notes", state.lang === "he" ? "הערות" : "ملاحظات", row.notes || "", "textarea", false, "full") : ""}`;
+  if (resource === "clients") return html`${field("fname", uiText("الاسم الأول", "שם פרטי", "First name"), row.fname || "")}${field("lname", uiText("اسم العائلة", "שם משפחה", "Last name"), row.lname || "")}${field("phone", uiText("الهاتف", "טלפון", "Phone"), row.phone || "")}${field("email", uiText("البريد الإلكتروني", "אימייל", "Email"), row.email || "", "email", false)}${state.user?.role === "admin" ? field("notes", uiText("ملاحظات سريرية", "הערות קליניות", "Clinical notes"), row.notes || "", "textarea", false, "full") : ""}`;
   if (resource === "appointments") return html`${select("clientId", pageLabel("clients"), (state.data.clients || []).map((c) => [c.id, `${c.fname} ${c.lname}`]), row.clientId || "")}${select("serviceId", pageLabel("services"), (state.data.services || []).map((s) => [s.id, s.name]), row.serviceId || "")}${select("therapistId", clean("table.therapist"), therapists(), row.therapistId || state.user.id)}${field("date", clean("table.date"), row.date || new Date().toISOString().slice(0, 10), "date")}${field("time", clean("table.time"), row.time || clinicWorkStart(), "time")}${select("status", clean("table.status"), [["pending", cleanStatusLabel("pending")], ["done", cleanStatusLabel("done")], ["cancelled", cleanStatusLabel("cancelled")]], row.status || "pending")}${select("paymentStatus", clean("table.payment"), [["unpaid", cleanPaymentLabel("unpaid")], ["paid", cleanPaymentLabel("paid")], ["deposit", cleanPaymentLabel("deposit")]], row.paymentStatus || "unpaid")}${field("paidAmount", state.lang === "he" ? "סכום ששולם" : "المبلغ المدفوع", row.paidAmount || 0, "number", false)}${field("notes", state.lang === "he" ? "הערות" : "ملاحظات", row.notes || "", "textarea", false, "full")}`;
   if (resource === "categories") return field("name", state.lang === "he" ? "שם קטגוריה" : "اسم القسم", row.name || "");
   if (resource === "services") return html`${field("name", state.lang === "he" ? "שם שירות" : "اسم الخدمة", row.name || "")}${select("categoryId", pageLabel("categories"), (state.data.categories || []).map((c) => [c.id, c.name]), row.categoryId || "")}${field("duration", state.lang === "he" ? "משך בדקות" : "المدة بالدقائق", row.duration || 60, "number")}${field("price", clean("table.price"), row.price || 0, "number")}${select("active", state.lang === "he" ? "פעיל" : "فعال", [["true", clean("yes")], ["false", clean("no")]], String(row.active !== false))}`;
@@ -3171,6 +3367,8 @@ async function logoutFromFoundation() {
   } finally {
     state.user = null;
     state.data = {};
+    state.appointmentWorkspace = { status: "idle", error: "", queue: [], filters: { therapistId: "", status: "", serviceId: "" } };
+    state.patientWorkspace = { status: "idle", error: "", data: null, filters: { ...emptyPatientFilters } };
     setProtectedRoute("login", { replace: true });
   }
 }
@@ -3245,15 +3443,21 @@ renderLogin = function (error = "", values = {}) {
       state.user = result.user;
       applyProtectedRoute({ replace: true, render: false });
       await loadData();
+      state.appointmentWorkspace = { ...state.appointmentWorkspace, status: "idle", error: "", queue: [] };
+      state.patientWorkspace = { ...state.patientWorkspace, status: "idle", error: "", data: null };
       renderApp();
+      if (state.page === "calendar") void refreshAppointmentWorkspace();
+      if (state.page === "clients") void refreshPatientWorkspace();
     } catch (err) {
       renderLogin(err, { identifier: body.identifier, clinicIdentifier: body.clinicIdentifier });
     }
   });
 }
 
-function uiText(ar, he) {
-  return state.lang === "he" ? he : ar;
+function uiText(ar, he, en = ar) {
+  if (state.lang === "he") return he;
+  if (state.lang === "en") return en;
+  return ar;
 }
 
 function optionList(rows, valueKey, labelFn, selected = "") {
@@ -3554,7 +3758,7 @@ function appointmentTableFull(rows, actions = true) {
     `${currency()}${Number(a.price || 0).toLocaleString()}`,
     cleanPaymentLabel(a.paymentStatus || "unpaid"),
     cleanStatusLabel(a.status || "pending"),
-  ], actions ? (a) => `<td class="actions"><button class="btn secondary" data-sign-appointment="${a.id}">${uiText("إقرار", "חתימה")}</button><button class="btn secondary" data-receipt="${a.id}">${uiText("إيصال", "קבלה")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${clean("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${clean("delete")}</button>` : ""}</td>` : "");
+  ], actions ? (a) => `<td class="actions"><button class="btn secondary" data-sign-appointment="${a.id}">${uiText("إقرار", "חתימה", "Consent")}</button><button class="btn secondary" data-receipt="${a.id}">${uiText("إيصال", "קבלה", "Receipt")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${clean("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${clean("delete")}</button>` : ""}</td>` : "");
 }
 
 function openAppointmentConsentModal(appointmentId) {
@@ -3866,9 +4070,9 @@ renderAppointmentsHe = function () {
   });
   return html`
     <div class="toolbar">
-      <input data-filter="appointments" value="${escapeAttr(state.filters.appointments)}" placeholder="${uiText("بحث في المواعيد...", "חיפוש בתורים...")}">
+      <input data-filter="appointments" value="${escapeAttr(state.filters.appointments)}" placeholder="${uiText("بحث في المواعيد...", "חיפוש בתורים...", "Search appointments...")}">
       <select data-filter="appointmentStatus">
-        <option value="all" ${status === "all" ? "selected" : ""}>${uiText("كل الحالات", "כל הסטטוסים")}</option>
+        <option value="all" ${status === "all" ? "selected" : ""}>${uiText("كل الحالات", "כל הסטטוסים", "All statuses")}</option>
         <option value="pending" ${status === "pending" ? "selected" : ""}>${cleanStatusLabel("pending")}</option>
         <option value="done" ${status === "done" ? "selected" : ""}>${cleanStatusLabel("done")}</option>
         <option value="cancelled" ${status === "cancelled" ? "selected" : ""}>${cleanStatusLabel("cancelled")}</option>
@@ -3984,9 +4188,8 @@ const openClientProfileLegacy = async function (id) {
 
 topActionI18n = function () {
   if (state.user?.platformOwner) return "";
-  if (state.page === "appointments" && state.lang === "en") return '<button class="btn" data-new="appointments">New appointment</button>';
-  if (state.page === "appointments") return `<button class="btn" data-new="appointments">${uiText("موعد جديد", "תור חדש")}</button>`;
-  if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${uiText("عميل جديد", "לקוח חדש")}</button>`;
+  if (state.page === "appointments") return `<button class="btn" data-new="appointments">${uiText("موعد جديد", "תור חדש", "New appointment")}</button>`;
+  if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${uiText("مريض جديد", "מטופל חדש", "New patient")}</button>`;
   if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${uiText("رفع PDF", "העלאת PDF")}</button>`;
   if (state.page === "feedback") return `<button class="btn" data-new-feedback>${uiText("إرسال تقييم", "שליחת משוב")}</button>`;
   if (state.page === "gifts") return `<button class="btn" data-new-gift>${uiText("كرت هدية", "כרטיס מתנה")}</button>`;
