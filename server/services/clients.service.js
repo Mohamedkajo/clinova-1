@@ -20,6 +20,7 @@ import {
   updateClient,
 } from "../repositories/clients.repository.js";
 import { permissions } from "../repositories/permissions.repository.js";
+import { listClientClinicalVisits } from "../repositories/clinical-visits.repository.js";
 
 const planCatalog = {
   starter: { name: "Starter", monthlyPrice: 49, maxUsers: 5, maxClients: 200, whatsapp: false, billing: false },
@@ -106,6 +107,33 @@ function appointmentFromRow(row, { includeClinical = true, includeFinancial = tr
     appointment.paidAmount = Number(row.paid_amount || 0);
   }
   return appointment;
+}
+
+function clinicalVisitFromRow(row, includeClinical) {
+  const visit = {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    patientId: row.client_id,
+    therapistId: row.therapist_id,
+    therapistName: row.therapist_name || "",
+    serviceId: row.service_id,
+    serviceName: row.service_name || "",
+    visitDate: row.visit_date,
+    visitTime: row.visit_time,
+    status: row.status,
+    appointmentStatus: row.appointment_status,
+    completedAt: row.completed_at || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+  if (includeClinical) {
+    visit.treatmentSummary = row.treatment_summary || "";
+    visit.clinicalObservations = row.clinical_observations || "";
+    visit.recommendations = row.recommendations || "";
+    visit.followUpInstructions = row.follow_up_instructions || "";
+    visit.internalNotes = row.internal_notes || "";
+  }
+  return visit;
 }
 
 function clientValues(body, existing = {}) {
@@ -292,11 +320,12 @@ export async function getClientHistory(user, id) {
 
   const includeClinical = permissions.clients_clinical_read.includes(user.role);
   const includeFinancial = permissions.clients_financial_read.includes(user.role);
-  const [appointmentRows, crmEvents, rawFiles, consents] = await Promise.all([
+  const [appointmentRows, crmEvents, rawFiles, consents, clinicalVisitRows] = await Promise.all([
     listClientAppointments(user, id),
     listClientCrmEvents(id, user.tenantId),
     listClientFiles(id, user.tenantId),
     listClientConsentSignatures(id, user.tenantId),
+    listClientClinicalVisits(user, id),
   ]);
   const files = rawFiles.map((file) => includeClinical ? file : (({ notes, ...safeFile }) => safeFile)(file));
   const appointments = appointmentRows.map((row) => appointmentFromRow(row, { includeClinical, includeFinancial }));
@@ -320,6 +349,7 @@ export async function getClientHistory(user, id) {
       recentAppointment,
       files,
       consentSignatures: consents,
+      clinicalVisits: clinicalVisitRows.map((row) => clinicalVisitFromRow(row, includeClinical)),
       crmEvents: visibleCrmEvents,
       timeline,
       indicators: {
@@ -327,8 +357,14 @@ export async function getClientHistory(user, id) {
         completedCount: appointments.filter((item) => item.status === "done").length,
         fileCount: files.length,
         consentCount: consents.length,
+        clinicalVisitCount: clinicalVisitRows.length,
       },
-      capabilities: { clinicalNotes: includeClinical, financial: includeFinancial, write: permissions.clients_write.includes(user.role) },
+      capabilities: {
+        clinicalNotes: includeClinical,
+        clinicalVisits: includeClinical,
+        financial: includeFinancial,
+        write: permissions.clients_write.includes(user.role),
+      },
     },
   };
 }

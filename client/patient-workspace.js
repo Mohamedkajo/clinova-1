@@ -15,8 +15,25 @@ const copy = {
 };
 
 const timelineCopy = {
-  he: { appointment_created: "נוצר תור", appointment_status_changed: "סטטוס התור השתנה" },
-  ar: { appointment_created: "تم إنشاء الموعد", appointment_status_changed: "تغيّرت حالة الموعد" },
+  en: {
+    clinical_visit_started: "Clinical visit started",
+    clinical_visit_updated: "Clinical visit updated",
+    clinical_visit_completed: "Clinical visit completed",
+  },
+  he: {
+    appointment_created: "נוצר תור",
+    appointment_status_changed: "סטטוס התור השתנה",
+    clinical_visit_started: "הביקור הקליני התחיל",
+    clinical_visit_updated: "הביקור הקליני עודכן",
+    clinical_visit_completed: "הביקור הקליני הושלם",
+  },
+  ar: {
+    appointment_created: "تم إنشاء الموعد",
+    appointment_status_changed: "تغيّرت حالة الموعد",
+    clinical_visit_started: "بدأت الزيارة السريرية",
+    clinical_visit_updated: "تم تحديث الزيارة السريرية",
+    clinical_visit_completed: "اكتملت الزيارة السريرية",
+  },
 };
 const t = (language, key) => timelineCopy[language]?.[key] || copy[language]?.[key] || copy.en[key] || key;
 const attr = (value) => escapeAttribute(value ?? "");
@@ -79,6 +96,27 @@ function timelineItem(event, language) {
   return `<li class="patient-timeline-item"><span class="patient-timeline-dot" aria-hidden="true"></span><div><header><strong>${safe(t(language, event.type))}</strong><time>${safe(formatDate(event.occurredAt, language, true))}</time></header>${event.description ? `<p>${safe(event.description)}</p>` : ""}${event.actor ? `<span>${safe(event.actor)}</span>` : ""}${financial}${linked}</div></li>`;
 }
 
+function clinicalVisitSection(data, language) {
+  const visits = data.clinicalVisits || [];
+  const canRead = Boolean(data.capabilities?.clinicalVisits);
+  const labels = language === "he"
+    ? { title: "ביקורים קליניים", empty: "אין ביקורים קליניים מתועדים.", restricted: "התוכן הקליני מוגבל לתפקידך.", summary: "סיכום טיפול", observations: "תצפיות קליניות", recommendations: "המלצות", followUp: "הנחיות מעקב", draft: "טיוטה", completed: "הושלם" }
+    : language === "ar"
+      ? { title: "الزيارات السريرية", empty: "لا توجد زيارات سريرية مسجلة.", restricted: "المحتوى السريري محجوب حسب صلاحيات دورك.", summary: "ملخص العلاج", observations: "الملاحظات السريرية", recommendations: "التوصيات", followUp: "تعليمات المتابعة", draft: "مسودة", completed: "مكتمل" }
+      : { title: "Clinical visits", empty: "No clinical visits recorded.", restricted: "Clinical contents are restricted for your role.", summary: "Treatment summary", observations: "Clinical observations", recommendations: "Recommendations", followUp: "Follow-up instructions", draft: "Draft", completed: "Completed" };
+  const rows = visits.map((visit) => `<article class="patient-clinical-visit">
+    <header><div><strong>${safe(visit.serviceName || "")}</strong><span>${safe(formatDate(visit.visitDate, language))} · ${safe(visit.visitTime || "")} · ${safe(visit.therapistName || "")}</span></div><span class="patient-status patient-status-${attr(visit.status)}">${safe(labels[visit.status] || visit.status)}</span></header>
+    ${canRead ? `<dl>
+      <div><dt>${safe(labels.summary)}</dt><dd>${safe(visit.treatmentSummary || t(language, "none"))}</dd></div>
+      ${visit.clinicalObservations ? `<div><dt>${safe(labels.observations)}</dt><dd>${safe(visit.clinicalObservations)}</dd></div>` : ""}
+      ${visit.recommendations ? `<div><dt>${safe(labels.recommendations)}</dt><dd>${safe(visit.recommendations)}</dd></div>` : ""}
+      ${visit.followUpInstructions ? `<div><dt>${safe(labels.followUp)}</dt><dd>${safe(visit.followUpInstructions)}</dd></div>` : ""}
+    </dl>` : `<p class="muted">${safe(labels.restricted)}</p>`}
+    <button class="btn ghost" type="button" data-patient-appointment-details="${attr(visit.appointmentId)}">${safe(t(language, "openAppointment"))}</button>
+  </article>`).join("");
+  return `<section class="patient-profile-section"><h3>${safe(labels.title)}</h3><div class="patient-clinical-visits">${rows || `<p class="muted">${safe(labels.empty)}</p>`}</div></section>`;
+}
+
 export function renderPatientProfile({ language = "en", status = "ready", data = null, error = "" }) {
   const close = `<button class="icon-button" type="button" data-close-patient-profile aria-label="${attr(t(language, "close"))}">×</button>`;
   if (status === "loading") return `<div class="patient-profile-layer"><button class="patient-profile-scrim" type="button" data-close-patient-profile aria-label="${attr(t(language, "close"))}"></button><section class="patient-profile-panel" role="dialog" aria-modal="true" aria-labelledby="patientProfileTitle"><header><h2 id="patientProfileTitle">${safe(t(language, "overview"))}</h2>${close}</header>${boundary("loading", language, t(language, "profileLoading"))}</section></div>`;
@@ -94,6 +132,7 @@ export function renderPatientProfile({ language = "en", status = "ready", data =
     <section class="patient-profile-card"><h3>${safe(t(language, "upcomingCard"))}</h3>${appointmentSummary(data.upcomingAppointment, language)}</section><section class="patient-profile-card"><h3>${safe(t(language, "recentCard"))}</h3>${appointmentSummary(data.recentAppointment, language)}</section>
     <section class="patient-profile-card patient-indicators"><h3>${safe(t(language, "indicators"))}</h3><div><span><strong>${safe(indicators.appointmentCount || 0)}</strong>${safe(t(language, "appointmentCount"))}</span><span><strong>${safe(indicators.completedCount || 0)}</strong>${safe(t(language, "completed"))}</span><span><strong>${safe(indicators.fileCount || 0)}</strong>${safe(t(language, "fileCount"))}</span><span><strong>${safe(indicators.consentCount || 0)}</strong>${safe(t(language, "consents"))}</span></div></section></div>
     <section class="patient-profile-section"><h3>${safe(t(language, "appointments"))}</h3><div class="patient-appointment-list">${appointments.map((item) => `<article><div><strong>${safe(item.serviceName)}</strong><span>${safe(formatDate(item.date, language))} · ${safe(item.time)}</span></div>${statusPill(item.status, language)}<button class="btn ghost" type="button" data-patient-appointment-details="${attr(item.id)}">${safe(t(language, "openAppointment"))}</button></article>`).join("") || `<p class="muted">${safe(t(language, "noAppointments"))}</p>`}</div></section>
+    ${clinicalVisitSection(data, language)}
     <section class="patient-profile-section"><h3>${safe(t(language, "files"))}</h3><div class="patient-file-list">${files.map((file) => `<article><div><a href="${attr(file.url)}" target="_blank" rel="noopener">${safe(file.name)}</a><span>${safe(file.notes || file.originalName || "")}</span></div>${capabilities.write ? `<button class="btn danger" type="button" data-delete-file="${attr(file.id)}" data-client="${attr(patient.id)}">${safe(t(language, "remove"))}</button>` : ""}</article>`).join("") || `<p class="muted">${safe(t(language, "noFiles"))}</p>`}</div>${capabilities.write ? `<form id="clientFileForm" class="patient-inline-form"><input name="name" placeholder="${attr(t(language, "fileName"))}"><input name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><input name="notes" placeholder="${attr(t(language, "fileNotes"))}"><button class="btn" type="submit">${safe(t(language, "uploadFile"))}</button></form>` : ""}</section>
     <section class="patient-profile-section"><h3>${safe(t(language, "timeline"))}</h3>${capabilities.write && capabilities.clinicalNotes ? `<form id="clientNoteForm" class="patient-inline-form"><input name="note" placeholder="${attr(t(language, "notePlaceholder"))}" required><button class="btn secondary" type="submit">${safe(t(language, "addNote"))}</button></form>` : ""}<ol class="patient-timeline">${(data.timeline || []).map((event) => timelineItem(event, language)).join("") || `<li class="muted">${safe(t(language, "noTimeline"))}</li>`}</ol></section>
   </div></section></div>`;

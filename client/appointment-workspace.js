@@ -347,7 +347,7 @@ export function renderAppointmentWorkspace({
   </div>`;
 }
 
-export function renderAppointmentDetails({ language = "he", status = "ready", appointment = null, error = "", canChangeStatus = false } = {}) {
+export function renderAppointmentDetails({ language = "he", status = "ready", appointment = null, clinicalVisit = null, canOpenClinicalVisit = false, error = "", canChangeStatus = false } = {}) {
   let content = "";
   if (status === "loading") {
     content = `<div class="appointment-detail-boundary" aria-busy="true"><span class="boundary-spinner" aria-hidden="true"></span><p>${escapeHtml(workspaceText(language, "detailsLoading"))}</p></div>`;
@@ -366,6 +366,7 @@ export function renderAppointmentDetails({ language = "he", status = "ready", ap
       </dl>
       <section class="appointment-detail-notes"><h3>${escapeHtml(workspaceText(language, "notes"))}</h3><p>${escapeHtml(appointment.notes || workspaceText(language, "noNotes"))}</p></section>
       ${canChangeStatus ? `<form class="appointment-status-form" data-appointment-status-form="${escapeAttribute(appointment.id)}"><label>${escapeHtml(workspaceText(language, "changeStatus"))}<select name="status">${["pending", "done", "cancelled"].map((value) => `<option value="${value}" ${appointment.status === value ? "selected" : ""}>${escapeHtml(statusLabel(language, value))}</option>`).join("")}</select></label><button class="btn" type="submit">${escapeHtml(workspaceText(language, "saveStatus"))}</button></form>` : ""}
+      ${canOpenClinicalVisit ? `<button type="button" class="btn" data-open-clinical-visit="${escapeAttribute(appointment.id)}">${escapeHtml(clinicalVisit ? (language === "he" ? "פתיחת ביקור קליני" : language === "ar" ? "فتح الزيارة السريرية" : "Open clinical visit") : (language === "he" ? "התחלת ביקור" : language === "ar" ? "بدء الزيارة" : "Start visit"))}</button>` : clinicalVisit ? `<span class="pill pending">${escapeHtml(language === "he" ? "ביקור קליני תועד" : language === "ar" ? "تم توثيق زيارة سريرية" : "Clinical visit recorded")}</span>` : ""}
       ${appointment.clientId ? `<button type="button" class="btn secondary" data-appointment-patient="${escapeAttribute(appointment.clientId)}">${escapeHtml(workspaceText(language, "openPatient"))}</button>` : ""}
     </div>`;
   }

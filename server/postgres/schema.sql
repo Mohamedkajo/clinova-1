@@ -158,6 +158,29 @@ CREATE TABLE IF NOT EXISTS appointments (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS clinical_visits (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  appointment_id BIGINT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  therapist_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  service_id BIGINT REFERENCES services(id) ON DELETE SET NULL,
+  visit_date TEXT NOT NULL,
+  visit_time TEXT NOT NULL,
+  treatment_summary TEXT NOT NULL,
+  clinical_observations TEXT NOT NULL DEFAULT '',
+  recommendations TEXT NOT NULL DEFAULT '',
+  follow_up_instructions TEXT NOT NULL DEFAULT '',
+  internal_notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','completed')),
+  completed_at TIMESTAMPTZ,
+  created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  updated_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, appointment_id)
+);
+
 CREATE TABLE IF NOT EXISTS clinic_settings (
   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
   key TEXT NOT NULL,
@@ -356,6 +379,9 @@ CREATE INDEX IF NOT EXISTS idx_appointments_active ON appointments(active);
 CREATE INDEX IF NOT EXISTS idx_appointments_tenant ON appointments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(date);
 CREATE INDEX IF NOT EXISTS idx_appointments_therapist_date ON appointments(therapist_id, date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_visits_tenant_appointment ON clinical_visits(tenant_id, appointment_id);
+CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_client_date ON clinical_visits(tenant_id, client_id, visit_date);
+CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_therapist ON clinical_visits(tenant_id, therapist_id);
 CREATE INDEX IF NOT EXISTS idx_consent_templates_active ON consent_templates(active);
 CREATE INDEX IF NOT EXISTS idx_consent_templates_tenant ON consent_templates(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_requests_token ON feedback_requests(token);

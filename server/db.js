@@ -77,7 +77,7 @@ class PostgresAdapter {
       get: async (...values) => (await this.pool.query(pgSql(sql), pgValues(values))).rows[0],
       run: async (...values) => {
         let text = pgSql(sql);
-        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|client_files|consent_templates|consent_signatures|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
+        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
         if (wantsId) text += " RETURNING id";
         const result = await this.pool.query(text, pgValues(values));
         return {
@@ -300,6 +300,28 @@ async function initSqlite() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS clinical_visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      therapist_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
+      visit_date TEXT NOT NULL,
+      visit_time TEXT NOT NULL,
+      treatment_summary TEXT NOT NULL,
+      clinical_observations TEXT NOT NULL DEFAULT '',
+      recommendations TEXT NOT NULL DEFAULT '',
+      follow_up_instructions TEXT NOT NULL DEFAULT '',
+      internal_notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','completed')),
+      completed_at TEXT,
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      updated_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, appointment_id)
+    );
     CREATE TABLE IF NOT EXISTS clinic_settings (
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
       key TEXT NOT NULL,
@@ -471,6 +493,9 @@ async function initSqlite() {
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_tasks_tenant_status ON crm_tasks(tenant_id, status)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_tasks_client ON crm_tasks(client_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_events_tenant ON crm_events(tenant_id)");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_visits_tenant_appointment ON clinical_visits(tenant_id, appointment_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_client_date ON clinical_visits(tenant_id, client_id, visit_date)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_therapist ON clinical_visits(tenant_id, therapist_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");

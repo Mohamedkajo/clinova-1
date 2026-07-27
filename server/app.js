@@ -9,6 +9,7 @@ import { publicErrorResponse } from "./shared/http/public-error.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { clientsRoutes } from "./routes/clients.routes.js";
 import { appointmentsRoutes } from "./routes/appointments.routes.js";
+import { clinicalVisitsRoutes } from "./routes/clinical-visits.routes.js";
 import { usersRoutes } from "./routes/users.routes.js";
 import { invitationsRoutes } from "./routes/invitations.routes.js";
 import { reportsRoutes } from "./routes/reports.routes.js";
@@ -35,6 +36,7 @@ import { handleUsersRoute } from "./controllers/users.controller.js";
 import { handleInvitationsRoute } from "./controllers/invitations.controller.js";
 import { handleClientsRoute } from "./controllers/clients.controller.js";
 import { handleAppointmentsRoute } from "./controllers/appointments.controller.js";
+import { handleClinicalVisitsRoute } from "./controllers/clinical-visits.controller.js";
 import { handleSettingsRoute } from "./controllers/settings.controller.js";
 import { handleTenantDomainsRoute } from "./controllers/tenant-domains.controller.js";
 import { handleFilesRoute } from "./controllers/files.controller.js";
@@ -79,6 +81,7 @@ const registeredRoutes = [
   ...giftsRoutes,
   ...clientsRoutes,
   ...appointmentsRoutes,
+  ...clinicalVisitsRoutes,
   ...usersRoutes,
   ...invitationsRoutes,
   ...reportsRoutes,
@@ -160,6 +163,11 @@ async function handleApi(req, res, url) {
     }
     if (matchedRoute.module === "appointments") {
       if (await handleAppointmentsRoute(req, res, url)) return;
+      apiNotFound(res);
+      return;
+    }
+    if (matchedRoute.module === "clinical-visits") {
+      if (await handleClinicalVisitsRoute(req, res, url)) return;
       apiNotFound(res);
       return;
     }

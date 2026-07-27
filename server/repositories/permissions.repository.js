@@ -19,4 +19,6 @@ export const permissions = {
   appointments_read: ["admin", "reception", "therapist"],
   appointments_write: ["admin", "reception", "therapist"],
   appointments_delete: ["admin"],
+  clinical_visits_read: ["admin", "reception", "therapist"],
+  clinical_visits_write: ["admin", "therapist"],
 };

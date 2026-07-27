@@ -37,6 +37,7 @@ await db.exec(`
   DELETE FROM crm_events;
   DELETE FROM crm_tasks;
   DELETE FROM gift_cards;
+  DELETE FROM clinical_visits;
   DELETE FROM appointments;
   DELETE FROM clients;
   DELETE FROM services;

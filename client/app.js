@@ -11,6 +11,7 @@ import {
   renderPatientWorkspace,
 } from "./patient-workspace.js";
 import { renderBookingWorkflow, selectedServiceDuration } from "./booking-workflow.js";
+import { renderClinicalVisit } from "./clinical-visit.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -589,6 +590,8 @@ function bindAppointmentDrawer() {
   bindModalAccessibility({ onClose: closeAppointmentDrawer, focusSelector: ".appointment-drawer [data-close-appointment-drawer]" });
   const patientButton = document.querySelector("[data-appointment-patient]");
   if (patientButton) patientButton.addEventListener("click", () => openClientProfile(Number(patientButton.dataset.appointmentPatient)));
+  const clinicalButton = document.querySelector("[data-open-clinical-visit]");
+  if (clinicalButton) clinicalButton.addEventListener("click", () => void openClinicalVisit(Number(clinicalButton.dataset.openClinicalVisit)));
   const statusForm = document.querySelector("[data-appointment-status-form]");
   if (statusForm) statusForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -618,12 +621,172 @@ async function openAppointmentDetails(id) {
   root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "loading" });
   bindAppointmentDrawer();
   try {
-    const appointment = await api(`/api/appointments/${id}`);
-    root.innerHTML = renderAppointmentDetails({ language: state.lang, appointment, canChangeStatus: true });
+    const [appointment, clinical] = await Promise.all([
+      api(`/api/appointments/${id}`),
+      api(`/api/clinical-visits/appointment/${id}`),
+    ]);
+    root.innerHTML = renderAppointmentDetails({
+      language: state.lang,
+      appointment,
+      clinicalVisit: clinical.visit,
+      canOpenClinicalVisit: Boolean(clinical.capabilities?.sensitive && clinical.capabilities?.write),
+      canChangeStatus: true,
+    });
   } catch (error) {
     root.innerHTML = renderAppointmentDetails({ language: state.lang, status: "error", error: localizedError(error) });
   }
   bindAppointmentDrawer();
+}
+
+let clinicalVisitSession = null;
+
+function clinicalUnsavedMessage() {
+  return state.lang === "he"
+    ? "יש שינויים שלא נשמרו. לסגור בכל זאת?"
+    : state.lang === "ar"
+      ? "توجد تغييرات غير محفوظة. هل تريد الإغلاق؟"
+      : "You have unsaved changes. Close anyway?";
+}
+
+function cleanupClinicalVisitSession() {
+  if (clinicalVisitSession?.beforeUnload) {
+    window.removeEventListener("beforeunload", clinicalVisitSession.beforeUnload);
+  }
+  clinicalVisitSession = null;
+}
+
+function closeClinicalVisit() {
+  const session = clinicalVisitSession;
+  if (!session) return;
+  if (session.dirty && !window.confirm(clinicalUnsavedMessage())) return;
+  const appointmentId = session.appointmentId;
+  cleanupClinicalVisitSession();
+  void openAppointmentDetails(appointmentId);
+}
+
+function clinicalVisitBody(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    treatmentSummary: String(values.treatmentSummary || ""),
+    clinicalObservations: String(values.clinicalObservations || ""),
+    recommendations: String(values.recommendations || ""),
+    followUpInstructions: String(values.followUpInstructions || ""),
+    internalNotes: String(values.internalNotes || ""),
+  };
+}
+
+async function loadClinicalVisitSession() {
+  const session = clinicalVisitSession;
+  if (!session) return;
+  session.status = "loading";
+  renderClinicalVisitSession();
+  try {
+    session.data = await api(`/api/clinical-visits/appointment/${session.appointmentId}`);
+    session.status = "ready";
+    session.error = "";
+  } catch (error) {
+    session.status = "error";
+    session.error = localizedError(error);
+  }
+  renderClinicalVisitSession();
+}
+
+async function persistClinicalVisit(form) {
+  const session = clinicalVisitSession;
+  if (!session || session.saving) return null;
+  if (!form.reportValidity()) return null;
+  session.saving = true;
+  session.message = "";
+  renderClinicalVisitSession();
+  try {
+    const body = clinicalVisitBody(form);
+    const visit = session.data?.visit;
+    const saved = visit
+      ? await api(`/api/clinical-visits/${visit.id}`, { method: "PUT", body })
+      : await api("/api/clinical-visits", { method: "POST", body: { appointmentId: session.appointmentId, ...body } });
+    session.data.visit = saved;
+    session.data.capabilities.complete = saved.status === "draft";
+    session.dirty = false;
+    showCenterSuccess(state.lang === "he" ? "הרשומה הקלינית נשמרה." : state.lang === "ar" ? "تم حفظ السجل السريري." : "Clinical record saved.");
+    return saved;
+  } catch (error) {
+    session.message = localizedError(error);
+    return null;
+  } finally {
+    if (clinicalVisitSession === session) {
+      session.saving = false;
+      renderClinicalVisitSession();
+    }
+  }
+}
+
+function renderClinicalVisitSession() {
+  const session = clinicalVisitSession;
+  const root = document.getElementById("modalRoot");
+  if (!session || !root) return;
+  root.innerHTML = renderClinicalVisit({
+    language: state.lang,
+    status: session.status,
+    data: session.data,
+    error: session.error,
+    saving: session.saving,
+    message: session.message,
+  });
+  bindModalAccessibility({ onClose: closeClinicalVisit, focusSelector: session.status === "ready" ? "[name='treatmentSummary']" : "[data-close-clinical-visit]" });
+  root.querySelector("[data-close-clinical-visit]")?.addEventListener("click", closeClinicalVisit);
+  const form = root.querySelector("[data-clinical-visit-form]");
+  if (!form) return;
+  form.addEventListener("input", () => {
+    if (clinicalVisitSession) clinicalVisitSession.dirty = true;
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await persistClinicalVisit(event.currentTarget);
+  });
+  root.querySelector("[data-complete-clinical-visit]")?.addEventListener("click", async (event) => {
+    if (!clinicalVisitSession || clinicalVisitSession.saving) return;
+    let visit = clinicalVisitSession.data?.visit;
+    if (clinicalVisitSession.dirty) visit = await persistClinicalVisit(form);
+    if (!visit || clinicalVisitSession?.saving) return;
+    const sessionNow = clinicalVisitSession;
+    sessionNow.saving = true;
+    renderClinicalVisitSession();
+    try {
+      sessionNow.data.visit = await api(`/api/clinical-visits/${visit.id}/complete`, { method: "POST" });
+      sessionNow.data.capabilities.complete = false;
+      sessionNow.dirty = false;
+      showCenterSuccess(state.lang === "he" ? "הרשומה הקלינית הושלמה." : state.lang === "ar" ? "تم إكمال السجل السريري." : "Clinical record completed.");
+    } catch (error) {
+      sessionNow.message = localizedError(error);
+    } finally {
+      if (clinicalVisitSession === sessionNow) {
+        sessionNow.saving = false;
+        renderClinicalVisitSession();
+      }
+    }
+  });
+}
+
+async function openClinicalVisit(appointmentId) {
+  cleanupClinicalVisitSession();
+  beginModalInteraction();
+  const beforeUnload = (event) => {
+    if (!clinicalVisitSession?.dirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
+  clinicalVisitSession = {
+    appointmentId,
+    status: "loading",
+    data: null,
+    error: "",
+    message: "",
+    saving: false,
+    dirty: false,
+    beforeUnload,
+  };
+  window.addEventListener("beforeunload", beforeUnload);
+  await loadClinicalVisitSession();
 }
 
 let bookingWorkflowSession = null;
@@ -3758,7 +3921,7 @@ function appointmentTableFull(rows, actions = true) {
     `${currency()}${Number(a.price || 0).toLocaleString()}`,
     cleanPaymentLabel(a.paymentStatus || "unpaid"),
     cleanStatusLabel(a.status || "pending"),
-  ], actions ? (a) => `<td class="actions"><button class="btn secondary" data-sign-appointment="${a.id}">${uiText("إقرار", "חתימה", "Consent")}</button><button class="btn secondary" data-receipt="${a.id}">${uiText("إيصال", "קבלה", "Receipt")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${clean("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${clean("delete")}</button>` : ""}</td>` : "");
+  ], actions ? (a) => `<td class="actions"><button class="btn secondary" data-appointment-details="${a.id}">${uiText("التفاصيل", "פרטים", "Details")}</button><button class="btn secondary" data-sign-appointment="${a.id}">${uiText("إقرار", "חתימה", "Consent")}</button><button class="btn secondary" data-receipt="${a.id}">${uiText("إيصال", "קבלה", "Receipt")}</button><button class="btn secondary" data-whatsapp="${a.id}">WhatsApp</button><button class="btn secondary" data-edit="appointments" data-id="${a.id}">${clean("edit")}</button>${state.user.role === "admin" ? `<button class="btn danger" data-delete="appointments" data-id="${a.id}">${clean("delete")}</button>` : ""}</td>` : "");
 }
 
 function openAppointmentConsentModal(appointmentId) {

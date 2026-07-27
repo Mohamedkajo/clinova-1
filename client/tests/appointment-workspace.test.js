@@ -86,3 +86,30 @@ test("read-only detail drawer exposes required fields and escapes stored content
   assert.match(drawer, /&lt;img/);
   assert.doesNotMatch(drawer, /<form|data-edit=/);
 });
+
+test("appointment details exposes the clinical visit action only to authorized roles", () => {
+  const start = renderAppointmentDetails({
+    language: "en",
+    appointment: appointments[0],
+    canOpenClinicalVisit: true,
+  });
+  assert.match(start, /data-open-clinical-visit="1"/);
+  assert.match(start, />Start visit</);
+
+  const existing = renderAppointmentDetails({
+    language: "en",
+    appointment: appointments[0],
+    clinicalVisit: { id: 9, status: "draft" },
+    canOpenClinicalVisit: true,
+  });
+  assert.match(existing, />Open clinical visit</);
+
+  const reception = renderAppointmentDetails({
+    language: "en",
+    appointment: appointments[0],
+    clinicalVisit: { id: 9, status: "completed" },
+    canOpenClinicalVisit: false,
+  });
+  assert.match(reception, /Clinical visit recorded/);
+  assert.doesNotMatch(reception, /data-open-clinical-visit/);
+});

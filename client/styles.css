@@ -3066,3 +3066,40 @@ html[dir="ltr"] .patient-profile-layer { justify-items: start; }
   .patient-inline-form { grid-template-columns: 1fr; }
   .patient-timeline-item header { display: grid; gap: 2px; }
 }
+
+/* Sprint 2.1 — clinical visit record */
+.clinical-visit-card { width: min(960px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: hidden; }
+.clinical-visit-body { display: grid; gap: 16px; overflow-y: auto; }
+.clinical-visit-boundary { display: grid; min-height: 260px; place-items: center; color: var(--muted); }
+.clinical-visit-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.clinical-visit-summary > div { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.clinical-visit-summary span,
+.clinical-visit-summary small { color: var(--muted); font-size: 12px; }
+.clinical-visit-form { display: grid; gap: 14px; }
+.clinical-visit-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.clinical-visit-fields label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.clinical-visit-fields label.full { grid-column: 1 / -1; }
+.clinical-visit-fields textarea { min-height: 112px; resize: vertical; }
+.clinical-visit-fields label.full textarea { min-height: 138px; }
+.clinical-visit-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.clinical-visit-restricted { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.clinical-visit-restricted p { margin-bottom: 0; color: var(--muted); }
+.patient-clinical-visits { display: grid; gap: 10px; }
+.patient-clinical-visit { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.patient-clinical-visit > header { display: flex; justify-content: space-between; gap: 12px; }
+.patient-clinical-visit > header > div { display: grid; gap: 4px; }
+.patient-clinical-visit header span { color: var(--muted); font-size: 12px; }
+.patient-clinical-visit dl { display: grid; gap: 8px; margin: 0; }
+.patient-clinical-visit dl > div { display: grid; grid-template-columns: minmax(130px, .35fr) minmax(0, 1fr); gap: 10px; }
+.patient-clinical-visit dt { color: var(--muted); font-weight: 700; }
+.patient-clinical-visit dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.patient-clinical-visit .btn { width: fit-content; }
+
+@media (max-width: 760px) {
+  .clinical-visit-card { width: 100%; max-height: 100vh; border-radius: 0; }
+  .clinical-visit-summary,
+  .clinical-visit-fields { grid-template-columns: 1fr; }
+  .clinical-visit-fields label.full { grid-column: auto; }
+  .patient-clinical-visit > header,
+  .patient-clinical-visit dl > div { grid-template-columns: 1fr; display: grid; }
+}
