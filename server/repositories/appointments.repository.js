@@ -85,22 +85,30 @@ export async function findServiceCategory(serviceId, tenantId) {
   return await db.prepare("SELECT category_id FROM services WHERE id = ? AND tenant_id = ?").get(serviceId, tenantId);
 }
 
-export async function listConsentTemplatesForCategory(tenantId, categoryId) {
+export async function listConsentTemplatesForCategory(tenantId, categoryId, serviceId) {
   return await db.prepare(`
     SELECT id, title
     FROM consent_templates
-    WHERE tenant_id = ? AND active = 1 AND category_id = ?
+    WHERE tenant_id = ? AND active = 1
+      AND (service_id = ? OR (service_id IS NULL AND category_id = ?))
     ORDER BY id
-  `).all(tenantId, categoryId);
+  `).all(tenantId, serviceId, categoryId);
 }
 
 export async function findConsentSignature({ tenantId, templateId, clientId, appointmentId }) {
   return await db.prepare(`
-    SELECT id
-    FROM consent_signatures
+    SELECT id FROM patient_consents
+    WHERE tenant_id = ? AND template_id = ? AND status = 'signed'
+      AND (client_id = ? OR appointment_id = ?)
+      AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+    UNION ALL
+    SELECT id FROM consent_signatures
     WHERE tenant_id = ? AND template_id = ? AND (client_id = ? OR appointment_id = ?)
     LIMIT 1
-  `).get(tenantId, templateId, clientId || 0, appointmentId || 0);
+  `).get(
+    tenantId, templateId, clientId || 0, appointmentId || 0,
+    tenantId, templateId, clientId || 0, appointmentId || 0,
+  );
 }
 
 export async function createAppointment(tenantId, values) {

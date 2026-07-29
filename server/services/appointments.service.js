@@ -162,7 +162,7 @@ async function appointmentConflict({ id, tenantId, date, time, serviceId, therap
 async function missingLegalConsents({ tenantId, clientId, appointmentId, serviceId }) {
   const service = await findServiceCategory(serviceId, tenantId);
   if (!service?.category_id) return [];
-  const templates = await listConsentTemplatesForCategory(tenantId, service.category_id);
+  const templates = await listConsentTemplatesForCategory(tenantId, service.category_id, serviceId);
   const missing = [];
   for (const template of templates) {
     const signature = await findConsentSignature({
@@ -250,7 +250,19 @@ export async function getAppointments(user) {
 export async function getAppointment(user, id) {
   const row = await findAppointmentRow(user, id);
   if (!row) return { status: 404, body: { error: "Appointment not found." } };
-  return { status: 200, body: appointmentFromRow(row, user) };
+  const missing = await missingLegalConsents({
+    tenantId: user.tenantId,
+    clientId: row.client_id,
+    appointmentId: id,
+    serviceId: row.service_id,
+  });
+  return {
+    status: 200,
+    body: {
+      ...appointmentFromRow(row, user),
+      consentStatus: { complete: missing.length === 0, missing },
+    },
+  };
 }
 
 export async function getAppointmentQueue(user, requestedDate = "") {

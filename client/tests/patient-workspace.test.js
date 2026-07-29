@@ -55,3 +55,49 @@ test("appointment details patient action remains integrated with the patient pro
   assert.match(appSource, /openClientProfile\(Number\(patientButton\.dataset\.appointmentPatient\)\)/);
   assert.match(appSource, /api\(`\/api\/clients\/\$\{id\}\/history`\)/);
 });
+
+test("patient consents and protected clinical files render safely in RTL and 390px layout", async () => {
+  const profile = renderPatientProfile({
+    language: "ar",
+    data: {
+      patient: { ...patient, firstName: "Maya", lastName: "Levi", tags: [] },
+      appointments: [],
+      clinicalVisits: [],
+      patientConsents: [{
+        id: 9,
+        templateId: 3,
+        templateTitle: '<img src=x onerror="alert(1)">',
+        status: "pending",
+        createdAt: "2035-09-12",
+      }],
+      availableConsentTemplates: [{ id: 3, title: "موافقة العلاج" }],
+      files: [{
+        id: 4,
+        name: '<script>alert(1)</script>',
+        category: "diagnostic",
+        createdAt: "2035-09-12",
+        uploaderName: "Sara",
+        canDownload: false,
+      }],
+      timeline: [],
+      indicators: {},
+      capabilities: {
+        clinicalNotes: false,
+        clinicalVisits: false,
+        consentAssign: true,
+        consentSign: true,
+        fileUpload: false,
+        fileDelete: false,
+      },
+    },
+  });
+  assert.match(profile, /الموافقات/);
+  assert.match(profile, /data-patient-consent-sign="9"/);
+  assert.match(profile, /patientConsentAssignForm/);
+  assert.match(profile, /diagnostic/);
+  assert.doesNotMatch(profile, /href="undefined"|<img src=x|<script>alert/);
+
+  const styles = await readFile(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(styles, /@media \(max-width: 700px\)[\s\S]*\.patient-inline-form \{ grid-template-columns: 1fr; \}/);
+  assert.match(styles, /\.patient-consent-list/);
+});

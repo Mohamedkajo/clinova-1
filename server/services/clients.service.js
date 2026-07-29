@@ -11,6 +11,7 @@ import {
   findDuplicateClient,
   listClientAppointments,
   listClientConsentSignatures,
+  listClientPatientConsents,
   listClientCrmEvents,
   listClientFiles,
   listClientRows,
@@ -21,6 +22,7 @@ import {
 } from "../repositories/clients.repository.js";
 import { permissions } from "../repositories/permissions.repository.js";
 import { listClientClinicalVisits } from "../repositories/clinical-visits.repository.js";
+import { expirePatientConsents, listConsentTemplates } from "../repositories/consents.repository.js";
 
 const planCatalog = {
   starter: { name: "Starter", monthlyPrice: 49, maxUsers: 5, maxClients: 200, whatsapp: false, billing: false },
@@ -212,15 +214,31 @@ function patientProfileFromRow(row, includeClinical) {
   return patient;
 }
 
-function patientTimeline({ patientRow, appointmentRows, crmEvents, files, consents, includeClinical, includeFinancial }) {
+function patientTimeline({
+  patientRow,
+  appointmentRows,
+  crmEvents,
+  files,
+  consents,
+  patientConsents,
+  includeClinical,
+  includeFinancial,
+}) {
   const visibleCrmEvents = crmEvents.filter((event) => includeClinical || event.type !== "note");
   const events = visibleCrmEvents.map((event) => ({
     id: `crm-${event.id}`,
     type: event.type === "note" ? "clinical_note" : event.type,
     occurredAt: event.createdAt,
-    description: event.description,
+    description: event.type === "file_uploaded" && /^file:\d+$/.test(event.description || "") ? null : event.description,
     actor: event.userName || null,
-    ...(event.appointmentId ? { related: { appointmentId: event.appointmentId } } : {}),
+    ...((event.appointmentId || (event.type === "file_uploaded" && /^file:\d+$/.test(event.description || "")))
+      ? { related: {
+          ...(event.appointmentId ? { appointmentId: event.appointmentId } : {}),
+          ...(event.type === "file_uploaded" && /^file:\d+$/.test(event.description || "")
+            ? { fileId: Number(event.description.slice(5)) }
+            : {}),
+        } }
+      : {}),
   }));
 
   if (!visibleCrmEvents.some((event) => event.type === "client_created")) {
@@ -248,9 +266,12 @@ function patientTimeline({ patientRow, appointmentRows, crmEvents, files, consen
   }
 
   for (const file of files) {
-    events.push({ id: `file-${file.id}`, type: "file_uploaded", occurredAt: file.createdAt, description: file.name, actor: null, related: { fileId: file.id } });
+    if (!events.some((event) => event.related?.fileId === file.id)) {
+      events.push({ id: `file-${file.id}`, type: "file_uploaded", occurredAt: file.createdAt, description: null, actor: file.uploaderName || null, related: { fileId: file.id } });
+    }
   }
-  for (const consent of consents) {
+  const assignedSignatureIds = new Set(patientConsents.map((consent) => Number(consent.signatureId)).filter(Boolean));
+  for (const consent of consents.filter((item) => !assignedSignatureIds.has(Number(item.id)))) {
     events.push({ id: `consent-${consent.id}`, type: "consent_signed", occurredAt: consent.signedAt, description: consent.templateTitle, actor: consent.signerName || null, related: { appointmentId: consent.appointmentId || null } });
   }
   return events.filter((event) => event.occurredAt).sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
@@ -317,17 +338,22 @@ async function getLegacyClientHistory(user, id) {
 export async function getClientHistory(user, id) {
   const patientRow = await findClientProfileRow(user, id);
   if (!patientRow) return { status: 404, body: { error: "Patient not found." } };
+  await expirePatientConsents(user.tenantId, id);
 
   const includeClinical = permissions.clients_clinical_read.includes(user.role);
   const includeFinancial = permissions.clients_financial_read.includes(user.role);
-  const [appointmentRows, crmEvents, rawFiles, consents, clinicalVisitRows] = await Promise.all([
+  const [appointmentRows, crmEvents, rawFiles, consents, patientConsents, clinicalVisitRows, availableConsentTemplates] = await Promise.all([
     listClientAppointments(user, id),
     listClientCrmEvents(id, user.tenantId),
     listClientFiles(id, user.tenantId),
     listClientConsentSignatures(id, user.tenantId),
+    listClientPatientConsents(id, user.tenantId),
     listClientClinicalVisits(user, id),
+    listConsentTemplates(user.tenantId),
   ]);
-  const files = rawFiles.map((file) => includeClinical ? file : (({ notes, ...safeFile }) => safeFile)(file));
+  const files = rawFiles.map((file) => includeClinical
+    ? { ...file, canDownload: true }
+    : (({ notes, url, ...safeFile }) => ({ ...safeFile, canDownload: false }))(file));
   const appointments = appointmentRows.map((row) => appointmentFromRow(row, { includeClinical, includeFinancial }));
   const today = localDate();
   const upcomingAppointment = appointments
@@ -337,7 +363,16 @@ export async function getClientHistory(user, id) {
     .filter((item) => item.status === "done" && item.date <= today)
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))[0] || null;
   const visibleCrmEvents = crmEvents.filter((event) => includeClinical || event.type !== "note");
-  const timeline = patientTimeline({ patientRow, appointmentRows, crmEvents, files, consents, includeClinical, includeFinancial });
+  const timeline = patientTimeline({
+    patientRow,
+    appointmentRows,
+    crmEvents,
+    files,
+    consents,
+    patientConsents,
+    includeClinical,
+    includeFinancial,
+  });
 
   return {
     status: 200,
@@ -349,6 +384,8 @@ export async function getClientHistory(user, id) {
       recentAppointment,
       files,
       consentSignatures: consents,
+      patientConsents,
+      availableConsentTemplates,
       clinicalVisits: clinicalVisitRows.map((row) => clinicalVisitFromRow(row, includeClinical)),
       crmEvents: visibleCrmEvents,
       timeline,
@@ -356,7 +393,7 @@ export async function getClientHistory(user, id) {
         appointmentCount: appointments.length,
         completedCount: appointments.filter((item) => item.status === "done").length,
         fileCount: files.length,
-        consentCount: consents.length,
+        consentCount: patientConsents.length || consents.length,
         clinicalVisitCount: clinicalVisitRows.length,
       },
       capabilities: {
@@ -364,6 +401,11 @@ export async function getClientHistory(user, id) {
         clinicalVisits: includeClinical,
         financial: includeFinancial,
         write: permissions.clients_write.includes(user.role),
+        consentAssign: permissions.patient_consents_write.includes(user.role),
+        consentSign: permissions.consents.includes(user.role),
+        fileUpload: permissions.client_files_write.includes(user.role),
+        fileDownload: permissions.client_files_read.includes(user.role),
+        fileDelete: permissions.client_files_delete.includes(user.role),
       },
     },
   };

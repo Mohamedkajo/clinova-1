@@ -113,3 +113,23 @@ test("appointment details exposes the clinical visit action only to authorized r
   assert.match(reception, /Clinical visit recorded/);
   assert.doesNotMatch(reception, /data-open-clinical-visit/);
 });
+
+test("appointment details shows required consent status without exposing consent text", () => {
+  const pending = renderAppointmentDetails({
+    language: "he",
+    appointment: {
+      ...appointments[0],
+      consentStatus: { complete: false, missing: [{ id: 7, title: "הסכמה לטיפול" }] },
+    },
+  });
+  assert.match(pending, /appointment-consent-status/);
+  assert.match(pending, /הסכמה לפני טיפול/);
+  assert.match(pending, /הסכמה לטיפול/);
+
+  const complete = renderAppointmentDetails({
+    language: "ar",
+    appointment: { ...appointments[0], consentStatus: { complete: true, missing: [] } },
+  });
+  assert.match(complete, /الموافقة قبل العلاج/);
+  assert.match(complete, /مكتمل/);
+});

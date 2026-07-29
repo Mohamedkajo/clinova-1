@@ -1277,10 +1277,16 @@ function bindPatientProfile(id) {
   const fileForm = root?.querySelector("#clientFileForm");
   if (fileForm) fileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (fileForm.getAttribute("aria-busy") === "true") return;
+    const submit = fileForm.querySelector("[type='submit']");
+    fileForm.setAttribute("aria-busy", "true");
+    if (submit) submit.disabled = true;
     try {
       await api(`/api/clients/${id}/files`, { method: "POST", body: new FormData(fileForm) });
       await openClientProfile(id);
     } catch (error) {
+      fileForm.removeAttribute("aria-busy");
+      if (submit) submit.disabled = false;
       showCenterError(localizedError(error));
     }
   });
@@ -1291,6 +1297,45 @@ function bindPatientProfile(id) {
     } catch (error) {
       showCenterError(localizedError(error));
     }
+  }));
+  const consentForm = root?.querySelector("#patientConsentAssignForm");
+  if (consentForm) consentForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (consentForm.getAttribute("aria-busy") === "true") return;
+    const submit = consentForm.querySelector("[type='submit']");
+    consentForm.setAttribute("aria-busy", "true");
+    if (submit) submit.disabled = true;
+    try {
+      const body = Object.fromEntries(new FormData(consentForm));
+      body.templateId = Number(body.templateId);
+      await api(`/api/clients/${id}/consents`, { method: "POST", body });
+      await openClientProfile(id);
+    } catch (error) {
+      consentForm.removeAttribute("aria-busy");
+      if (submit) submit.disabled = false;
+      showCenterError(localizedError(error));
+    }
+  });
+  root?.querySelectorAll("[data-patient-consent-status]").forEach((button) => button.addEventListener("click", async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await api(`/api/patient-consents/${button.dataset.patientConsentStatus}/status`, {
+        method: "PATCH",
+        body: { status: button.dataset.status },
+      });
+      await openClientProfile(id);
+    } catch (error) {
+      button.disabled = false;
+      showCenterError(localizedError(error));
+    }
+  }));
+  root?.querySelectorAll("[data-patient-consent-sign]").forEach((button) => button.addEventListener("click", () => {
+    openConsentSignModal(Number(button.dataset.template), {
+      assignmentId: Number(button.dataset.patientConsentSign),
+      clientId: Number(button.dataset.client),
+      signerName: "",
+    });
   }));
 }
 
@@ -1312,7 +1357,7 @@ openClientProfile = async function (id) {
 topActionI18n = function () {
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${tr("newAppointment")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${tr("newClient")}</button>`;
-  if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${state.lang === "he" ? "העלאת PDF" : "رفع PDF"}</button>`;
+  if (state.page === "consents" && state.user.role === "admin") return `<button class="btn" data-new-consent>${state.lang === "he" ? "תבנית חדשה" : "نموذج جديد"}</button>`;
   if (state.page === "feedback") return `<button class="btn" data-new-feedback>${state.lang === "he" ? "שליחת משוב" : "إرسال تقييم"}</button>`;
   if (state.page === "gifts") return `<button class="btn" data-new-gift>${state.lang === "he" ? "כרטיס מתנה" : "كرت هدية"}</button>`;
   if (["users", "categories", "services"].includes(state.page)) return `<button class="btn" data-new="${state.page}">${tr("add")}</button>`;
@@ -3711,6 +3756,7 @@ function bindRestoredSectionActions() {
   document.querySelectorAll("[data-sign-appointment]").forEach((button) => button.addEventListener("click", () => openAppointmentConsentModal(Number(button.dataset.signAppointment))));
 
   document.querySelectorAll("[data-new-consent]").forEach((button) => button.addEventListener("click", openConsentUploadModal));
+  document.querySelectorAll("[data-edit-consent]").forEach((button) => button.addEventListener("click", () => openConsentUploadModal(Number(button.dataset.editConsent))));
   document.querySelectorAll("[data-delete-consent]").forEach((button) => button.addEventListener("click", () => {
     reloadAfter(() => api(`/api/consents/${button.dataset.deleteConsent}`, { method: "DELETE" }));
   }));
@@ -3750,27 +3796,45 @@ function bindRestoredSectionActions() {
   document.querySelectorAll("[data-quick-appointment]").forEach((button) => button.addEventListener("click", () => openForm("appointments", Number(button.dataset.quickAppointment))));
 }
 
-function openConsentUploadModal() {
-  const he = state.lang === "he";
+function openConsentUploadModal(templateId = null) {
+  const template = (state.data.consentTemplates || []).find((item) => Number(item.id) === Number(templateId)) || {};
+  const editing = Boolean(template.id);
+  beginModalInteraction();
   document.getElementById("modalRoot").innerHTML = html`
-    <div class="modal"><form class="modal-card" id="consentUploadForm">
-      <div class="modal-head"><h3>${he ? "העלאת טופס PDF" : "رفع نموذج PDF"}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
+    <div class="modal"><form class="modal-card" id="consentUploadForm" role="dialog" aria-modal="true" aria-labelledby="consentTemplateTitle">
+      <div class="modal-head"><h3 id="consentTemplateTitle">${editing ? uiText("تعديل نموذج موافقة", "עריכת תבנית הסכמה", "Edit consent template") : uiText("نموذج موافقة جديد", "תבנית הסכמה חדשה", "New consent template")}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
       <div class="modal-body">
-        ${field("title", uiText("عنوان النموذج", "שם הטופס"), "", "text")}
-        ${select("categoryId", pageLabel("categories"), (state.data.categories || []).map((c) => [c.id, c.name]), "", false)}
-        <div class="field full"><label>PDF</label><input name="file" type="file" accept="application/pdf" required></div>
+        ${field("title", uiText("عنوان النموذج", "שם הטופס", "Title"), template.title || "", "text")}
+        ${field("description", uiText("الوصف", "תיאור", "Description"), template.description || "", "textarea", false, "full")}
+        ${field("consentText", uiText("نص الموافقة", "טקסט ההסכמה", "Consent text"), template.consentText || "", "textarea", true, "full")}
+        ${select("language", uiText("اللغة", "שפה", "Language"), [["he", "עברית"], ["ar", "العربية"], ["en", "English"]], template.language || state.lang)}
+        ${select("serviceId", pageLabel("services"), (state.data.services || []).map((service) => [service.id, service.name]), template.serviceId || "", false)}
+        ${field("expirationDays", uiText("مدة الصلاحية بالأيام", "תוקף בימים", "Expiration days"), template.expirationDays || "", "number", false)}
       </div>
       <div class="modal-foot"><button class="btn">${clean("save")}</button><div id="formError" class="muted"></div></div>
     </form></div>`;
   document.getElementById("closeModal").addEventListener("click", closeModal);
+  bindModalAccessibility({ focusSelector: "input[name='title']" });
   document.getElementById("consentUploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (event.currentTarget.getAttribute("aria-busy") === "true") return;
+    const submit = event.currentTarget.querySelector("[type='submit']");
+    event.currentTarget.setAttribute("aria-busy", "true");
+    if (submit) submit.disabled = true;
     try {
-      await api("/api/consents", { method: "POST", body: new FormData(event.currentTarget) });
+      const body = Object.fromEntries(new FormData(event.currentTarget));
+      body.serviceId = body.serviceId ? Number(body.serviceId) : null;
+      body.expirationDays = body.expirationDays ? Number(body.expirationDays) : null;
+      await api(editing ? `/api/consent-templates/${template.id}` : "/api/consent-templates", {
+        method: editing ? "PUT" : "POST",
+        body,
+      });
       closeModal();
       await loadData();
       renderApp();
     } catch (err) {
+      event.currentTarget.removeAttribute("aria-busy");
+      if (submit) submit.disabled = false;
       document.getElementById("formError").textContent = localizedError(err);
     }
   });
@@ -3944,9 +4008,10 @@ function openConsentSignModal(templateId, defaults = {}) {
   const lockedClient = clients.find((client) => Number(client.id) === Number(defaults.clientId));
   const lockedVisit = appointments.find((item) => Number(item.id) === Number(defaults.appointmentId));
   if (!selectedTemplate) return showCenterError(uiText("لا توجد نماذج إقرار", "אין טפסים משפטיים"));
+  beginModalInteraction();
   document.getElementById("modalRoot").innerHTML = html`
-    <div class="modal"><form class="modal-card wide" id="consentSignForm">
-      <div class="modal-head"><h3>${uiText("توقيع إقرار", "חתימת טופס")} - ${escapeHtml(selectedTemplate.title)}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
+    <div class="modal"><form class="modal-card wide" id="consentSignForm" role="dialog" aria-modal="true" aria-labelledby="consentSignTitle">
+      <div class="modal-head"><h3 id="consentSignTitle">${uiText("توقيع إقرار", "חתימת טופס")} - ${escapeHtml(selectedTemplate.title)}</h3><button type="button" class="btn ghost" id="closeModal">${clean("close")}</button></div>
       <div class="modal-body">
         ${select("templateId", uiText("النموذج", "טופס"), templates.map((item) => [item.id, item.title]), selectedTemplate.id)}
         ${lockedAppointment ? `
@@ -3959,11 +4024,13 @@ function openConsentSignModal(templateId, defaults = {}) {
           ${select("appointmentId", pageLabel("appointments"), appointments.map((item) => [item.id, `${item.date} ${item.time} - ${item.clientName}`]), defaults.appointmentId || "", false)}
         `}
         ${field("signerName", uiText("اسم الموقّع", "שם החותם"), defaults.signerName || "", "text", true)}
+        ${defaults.assignmentId ? `<label class="field full"><span>${uiText("شاهد من الطاقم", "עד צוות", "Staff witness")}</span><input type="checkbox" name="witness" value="true"></label>` : ""}
         <div class="field full"><label>${uiText("التوقيع", "חתימה")}</label><canvas id="signatureCanvas" width="720" height="220" style="width:100%;height:220px;border:1px solid #d9e2ec;border-radius:8px;background:white;touch-action:none"></canvas><button type="button" class="btn secondary" id="clearSignature">${uiText("مسح التوقيع", "ניקוי חתימה")}</button></div>
       </div>
       <div class="modal-foot"><button class="btn">${clean("save")}</button><div id="formError" class="muted"></div></div>
     </form></div>`;
   document.getElementById("closeModal").addEventListener("click", closeModal);
+  bindModalAccessibility({ focusSelector: "input[name='signerName']" });
   const canvas = document.getElementById("signatureCanvas");
   const ctx = canvas.getContext("2d");
   let drawing = false;
@@ -3996,6 +4063,7 @@ function openConsentSignModal(templateId, defaults = {}) {
   });
   document.getElementById("consentSignForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (event.currentTarget.getAttribute("aria-busy") === "true") return;
     if (!hasInk) {
       document.getElementById("formError").textContent = uiText("يرجى إضافة التوقيع", "יש להוסיף חתימה");
       return;
@@ -4006,13 +4074,26 @@ function openConsentSignModal(templateId, defaults = {}) {
     body.appointmentId = body.appointmentId ? Number(body.appointmentId) : null;
     body.signatureData = canvas.toDataURL("image/png");
     body.lang = state.lang;
+    body.witness = body.witness === "true";
     delete body.templateId;
+    const submit = event.currentTarget.querySelector("[type='submit']");
+    event.currentTarget.setAttribute("aria-busy", "true");
+    if (submit) submit.disabled = true;
     try {
-      await api(`/api/consents/${id}/sign`, { method: "POST", body });
-      closeModal();
-      await loadData();
-      renderApp();
+      const endpoint = defaults.assignmentId
+        ? `/api/patient-consents/${defaults.assignmentId}/sign`
+        : `/api/consents/${id}/sign`;
+      await api(endpoint, { method: "POST", body });
+      if (defaults.assignmentId && defaults.clientId) {
+        await openClientProfile(Number(defaults.clientId));
+      } else {
+        closeModal();
+        await loadData();
+        renderApp();
+      }
     } catch (err) {
+      event.currentTarget.removeAttribute("aria-busy");
+      if (submit) submit.disabled = false;
       document.getElementById("formError").textContent = localizedError(err);
     }
   });
@@ -4353,7 +4434,7 @@ topActionI18n = function () {
   if (state.user?.platformOwner) return "";
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${uiText("موعد جديد", "תור חדש", "New appointment")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${uiText("مريض جديد", "מטופל חדש", "New patient")}</button>`;
-  if (state.page === "consents" && state.user.role !== "therapist") return `<button class="btn" data-new-consent>${uiText("رفع PDF", "העלאת PDF")}</button>`;
+  if (state.page === "consents" && state.user.role === "admin") return `<button class="btn" data-new-consent>${uiText("نموذج جديد", "תבנית חדשה", "New template")}</button>`;
   if (state.page === "feedback") return `<button class="btn" data-new-feedback>${uiText("إرسال تقييم", "שליחת משוב")}</button>`;
   if (state.page === "gifts") return `<button class="btn" data-new-gift>${uiText("كرت هدية", "כרטיס מתנה")}</button>`;
   if (["users", "categories", "services"].includes(state.page)) return `<button class="btn" data-new="${state.page}">${clean("add")}</button>`;
@@ -4561,6 +4642,21 @@ renderDashboardHe = function () {
       </section>
     </div>
   `;
+}
+
+renderConsents = function () {
+  const templates = state.data.consentTemplates || [];
+  const signatures = state.data.consentSignatures || [];
+  const isAdmin = state.user?.role === "admin";
+  return html`
+    <div class="feature-grid consent-management">
+      <section class="card"><h3>${uiText("نماذج الموافقة", "תבניות הסכמה", "Consent templates")}</h3>
+        <div class="stack-list">${templates.map((template) => `<article class="feature-row"><div><strong>${escapeHtml(template.title)}</strong><span>${escapeHtml(template.serviceName || template.categoryName || uiText("كل الخدمات", "כל השירותים", "All services"))} · ${escapeHtml(String(template.language || "he").toUpperCase())}</span><small>${escapeHtml(template.description || "")}${template.expirationDays ? ` · ${escapeHtml(template.expirationDays)} ${escapeHtml(uiText("يوم", "ימים", "days"))}` : ""}</small></div><div class="actions">${template.url ? `<a class="btn secondary" href="${escapeAttr(template.url)}" target="_blank" rel="noopener">PDF</a>` : ""}${isAdmin ? `<button class="btn secondary" type="button" data-edit-consent="${escapeAttr(template.id)}">${clean("edit")}</button><button class="btn danger" type="button" data-delete-consent="${escapeAttr(template.id)}">${uiText("تعطيل", "השבתה", "Deactivate")}</button>` : ""}</div></article>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+      </section>
+      <section class="card"><h3>${uiText("آخر التوقيعات", "חתימות אחרונות", "Recent signatures")}</h3>
+        <div class="stack-list">${signatures.map((signature) => `<article class="feature-row"><div><strong>${escapeHtml(signature.clientName || signature.signerName || "-")}</strong><span>${escapeHtml(signature.templateTitle || "")} · ${escapeHtml(signature.signedAt || "")}</span></div></article>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div>
+      </section>
+    </div>`;
 }
 
 function renderFoundationLoading() {

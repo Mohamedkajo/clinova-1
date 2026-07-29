@@ -10,16 +10,13 @@ import {
 } from "../services/files.service.js";
 
 function sendDownload(res, result) {
-  if (result.status === 302) {
-    res.writeHead(302, { Location: result.location });
-    res.end();
-    return;
-  }
   res.writeHead(200, {
     "Content-Type": result.file.mimeType || "application/octet-stream",
     "Content-Length": result.buffer.length,
     "Content-Disposition": `inline; filename*=UTF-8''${contentDispositionName(result.file.originalName || result.file.name)}`,
     "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "private, no-store",
+    "Content-Security-Policy": "sandbox",
   });
   res.end(result.buffer);
 }
@@ -30,7 +27,7 @@ export async function handleFilesRoute(req, res, url) {
   const id = parts[2] ? Number(parts[2]) : null;
 
   if (resource === "clients" && id && parts[3] === "files") {
-    const permission = await requirePermission(req, req.method === "GET" ? "clients_read" : "clients_write");
+    const permission = await requirePermission(req, req.method === "GET" ? "client_files_metadata" : "client_files_write");
     if (!permission.ok) {
       json(res, permission.status, permission.body);
       return true;
@@ -50,13 +47,13 @@ export async function handleFilesRoute(req, res, url) {
   }
 
   if (resource === "client-files" && id && parts[3] === "download" && req.method === "GET") {
-    const permission = await requirePermission(req, "clients_read");
+    const permission = await requirePermission(req, "client_files_read");
     if (!permission.ok) {
       json(res, permission.status, permission.body);
       return true;
     }
     const result = await getClientFileDownload(permission.user, id);
-    if (result.buffer || result.location) {
+    if (result.buffer) {
       sendDownload(res, result);
       return true;
     }
@@ -65,7 +62,7 @@ export async function handleFilesRoute(req, res, url) {
   }
 
   if (resource === "client-files" && id && req.method === "DELETE") {
-    const permission = await requirePermission(req, "clients_write");
+    const permission = await requirePermission(req, "client_files_delete");
     if (!permission.ok) {
       json(res, permission.status, permission.body);
       return true;

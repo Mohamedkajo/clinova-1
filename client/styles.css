@@ -3018,13 +3018,22 @@ html[dir="ltr"] .patient-profile-layer { justify-items: start; }
 .patient-indicators span { display: grid; gap: 2px; color: var(--muted); font-size: 11px; text-align: center; }
 .patient-indicators strong { color: var(--text); font-size: 20px; }
 .patient-appointment-list,
-.patient-file-list { display: grid; gap: 8px; }
+.patient-file-list,
+.patient-consent-list { display: grid; gap: 8px; }
 .patient-appointment-list article,
-.patient-file-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.patient-file-list article,
+.patient-consent-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .patient-appointment-list article > div,
-.patient-file-list article > div { display: grid; min-width: 0; gap: 3px; }
+.patient-file-list article > div,
+.patient-consent-list article > div { display: grid; min-width: 0; gap: 3px; }
 .patient-appointment-list span,
-.patient-file-list span { color: var(--muted); font-size: 12px; }
+.patient-file-list span,
+.patient-consent-list span,
+.patient-consent-list small,
+.patient-file-list small { color: var(--muted); font-size: 12px; }
+.patient-consent-list .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.appointment-consent-status { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.appointment-consent-status small { flex-basis: 100%; color: var(--muted); }
 .patient-inline-form { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.3fr) minmax(140px, 1fr) auto; gap: 8px; margin-top: 14px; }
 .patient-inline-form input { min-width: 0; }
 .patient-timeline { position: relative; display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
@@ -3063,6 +3072,10 @@ html[dir="ltr"] .patient-profile-layer { justify-items: start; }
   .patient-profile-card:first-child { grid-row: auto; }
   .patient-indicators > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .patient-appointment-list article { align-items: flex-start; flex-wrap: wrap; }
+  .patient-file-list article,
+  .patient-consent-list article { align-items: flex-start; flex-direction: column; }
+  .patient-consent-list .actions,
+  .patient-consent-list .btn { width: 100%; }
   .patient-inline-form { grid-template-columns: 1fr; }
   .patient-timeline-item header { display: grid; gap: 2px; }
 }

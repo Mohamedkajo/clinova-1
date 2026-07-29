@@ -77,7 +77,7 @@ class PostgresAdapter {
       get: async (...values) => (await this.pool.query(pgSql(sql), pgValues(values))).rows[0],
       run: async (...values) => {
         let text = pgSql(sql);
-        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
+        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|patient_consents|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
         if (wantsId) text += " RETURNING id";
         const result = await this.pool.query(text, pgValues(values));
         return {
@@ -340,6 +340,11 @@ async function initSqlite() {
       size INTEGER NOT NULL DEFAULT 0,
       path TEXT DEFAULT '',
       notes TEXT DEFAULT '',
+      stored_name TEXT DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'clinical',
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+      clinical_visit_id INTEGER REFERENCES clinical_visits(id) ON DELETE SET NULL,
+      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -348,7 +353,15 @@ async function initSqlite() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      consent_text TEXT NOT NULL DEFAULT '',
+      language TEXT NOT NULL DEFAULT 'he',
+      expiration_days INTEGER,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       url TEXT NOT NULL,
       original_name TEXT DEFAULT '',
       mime_type TEXT DEFAULT 'application/pdf',
@@ -361,12 +374,29 @@ async function initSqlite() {
     CREATE TABLE IF NOT EXISTS consent_signatures (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
-      template_id INTEGER NOT NULL REFERENCES consent_templates(id) ON DELETE CASCADE,
+      template_id INTEGER NOT NULL REFERENCES consent_templates(id) ON DELETE RESTRICT,
       client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
       appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
       signer_name TEXT NOT NULL,
       signature_data TEXT NOT NULL,
       signed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS patient_consents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      template_id INTEGER NOT NULL REFERENCES consent_templates(id) ON DELETE RESTRICT,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+      service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','signed','declined','expired')),
+      signature_id INTEGER REFERENCES consent_signatures(id) ON DELETE SET NULL,
+      assigned_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      witness_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      signed_at TEXT,
+      expires_at TEXT,
+      declined_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS feedback_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -481,6 +511,19 @@ async function initSqlite() {
   await ensureSqliteColumn("client_files", "mime_type", "TEXT DEFAULT ''");
   await ensureSqliteColumn("client_files", "size", "INTEGER NOT NULL DEFAULT 0");
   await ensureSqliteColumn("client_files", "path", "TEXT DEFAULT ''");
+  await ensureSqliteColumn("client_files", "stored_name", "TEXT DEFAULT ''");
+  await ensureSqliteColumn("client_files", "category", "TEXT NOT NULL DEFAULT 'clinical'");
+  await ensureSqliteColumn("client_files", "appointment_id", "INTEGER REFERENCES appointments(id) ON DELETE SET NULL");
+  await ensureSqliteColumn("client_files", "clinical_visit_id", "INTEGER REFERENCES clinical_visits(id) ON DELETE SET NULL");
+  await ensureSqliteColumn("client_files", "uploaded_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+  await ensureSqliteColumn("consent_templates", "service_id", "INTEGER REFERENCES services(id) ON DELETE SET NULL");
+  await ensureSqliteColumn("consent_templates", "description", "TEXT NOT NULL DEFAULT ''");
+  await ensureSqliteColumn("consent_templates", "consent_text", "TEXT NOT NULL DEFAULT ''");
+  await ensureSqliteColumn("consent_templates", "language", "TEXT NOT NULL DEFAULT 'he'");
+  await ensureSqliteColumn("consent_templates", "expiration_days", "INTEGER");
+  await ensureSqliteColumn("consent_templates", "version", "INTEGER NOT NULL DEFAULT 1");
+  await ensureSqliteColumn("consent_templates", "created_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
+  await ensureSqliteColumn("consent_templates", "updated_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_username ON users(tenant_id, username)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_email ON users(tenant_id, email) WHERE email <> ''");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_tenant_name ON categories(tenant_id, name)");
@@ -496,6 +539,17 @@ async function initSqlite() {
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_visits_tenant_appointment ON clinical_visits(tenant_id, appointment_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_client_date ON clinical_visits(tenant_id, client_id, visit_date)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_therapist ON clinical_visits(tenant_id, therapist_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_client_files_tenant_client ON client_files(tenant_id, client_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_consents_tenant_client ON patient_consents(tenant_id, client_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_consents_tenant_appointment ON patient_consents(tenant_id, appointment_id)");
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_consents_active_unique
+    ON patient_consents(
+      tenant_id, template_id, client_id,
+      COALESCE(appointment_id, 0), COALESCE(service_id, 0)
+    )
+    WHERE status IN ('pending','signed')
+  `);
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");

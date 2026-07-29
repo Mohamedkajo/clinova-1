@@ -200,6 +200,11 @@ CREATE TABLE IF NOT EXISTS client_files (
   size BIGINT NOT NULL DEFAULT 0,
   path TEXT DEFAULT '',
   notes TEXT DEFAULT '',
+  stored_name TEXT DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'clinical',
+  appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL,
+  clinical_visit_id BIGINT REFERENCES clinical_visits(id) ON DELETE SET NULL,
+  uploaded_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -209,7 +214,15 @@ CREATE TABLE IF NOT EXISTS consent_templates (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
   category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL,
+  service_id BIGINT REFERENCES services(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  consent_text TEXT NOT NULL DEFAULT '',
+  language TEXT NOT NULL DEFAULT 'he',
+  expiration_days INTEGER,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
   url TEXT NOT NULL,
   original_name TEXT DEFAULT '',
   mime_type TEXT DEFAULT 'application/pdf',
@@ -223,13 +236,55 @@ CREATE TABLE IF NOT EXISTS consent_templates (
 CREATE TABLE IF NOT EXISTS consent_signatures (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
-  template_id BIGINT NOT NULL REFERENCES consent_templates(id) ON DELETE CASCADE,
+  template_id BIGINT NOT NULL REFERENCES consent_templates(id) ON DELETE RESTRICT,
   client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
   appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL,
   signer_name TEXT NOT NULL,
   signature_data TEXT NOT NULL,
   signed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS patient_consents (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  template_id BIGINT NOT NULL REFERENCES consent_templates(id) ON DELETE RESTRICT,
+  client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL,
+  service_id BIGINT REFERENCES services(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','signed','declined','expired')),
+  signature_id BIGINT REFERENCES consent_signatures(id) ON DELETE SET NULL,
+  assigned_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  witness_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  signed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  declined_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE client_files ADD COLUMN IF NOT EXISTS stored_name TEXT DEFAULT '';
+ALTER TABLE client_files ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'clinical';
+ALTER TABLE client_files ADD COLUMN IF NOT EXISTS appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL;
+ALTER TABLE client_files ADD COLUMN IF NOT EXISTS clinical_visit_id BIGINT REFERENCES clinical_visits(id) ON DELETE SET NULL;
+ALTER TABLE client_files ADD COLUMN IF NOT EXISTS uploaded_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS service_id BIGINT REFERENCES services(id) ON DELETE SET NULL;
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS consent_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'he';
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS expiration_days INTEGER;
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE consent_templates ADD COLUMN IF NOT EXISTS updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_client_files_tenant_client ON client_files(tenant_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_patient_consents_tenant_client ON patient_consents(tenant_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_patient_consents_tenant_appointment ON patient_consents(tenant_id, appointment_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_consents_active_unique
+  ON patient_consents(
+    tenant_id, template_id, client_id,
+    COALESCE(appointment_id, 0), COALESCE(service_id, 0)
+  )
+  WHERE status IN ('pending','signed');
 
 CREATE TABLE IF NOT EXISTS feedback_requests (
   id BIGSERIAL PRIMARY KEY,

@@ -179,10 +179,15 @@ export async function listClientAppointments(user, clientId) {
 
 export async function listClientFiles(clientId, tenantId) {
   return await db.prepare(`
-    SELECT id, client_id AS clientId, name, url, original_name AS originalName, mime_type AS mimeType, size, notes, created_at AS createdAt
-    FROM client_files
-    WHERE tenant_id = ? AND active = 1 AND client_id = ?
-    ORDER BY id DESC
+    SELECT f.id, f.client_id AS clientId, f.appointment_id AS appointmentId,
+           f.clinical_visit_id AS clinicalVisitId, f.name, f.url,
+           f.original_name AS originalName, f.stored_name AS storedName,
+           f.mime_type AS mimeType, f.size, f.notes, f.category,
+           f.uploaded_by AS uploadedBy, f.created_at AS createdAt, u.name AS uploaderName
+    FROM client_files f
+    LEFT JOIN users u ON u.id = f.uploaded_by AND u.tenant_id = f.tenant_id
+    WHERE f.tenant_id = ? AND f.active = 1 AND f.client_id = ?
+    ORDER BY f.id DESC
   `).all(tenantId, clientId);
 }
 
@@ -194,6 +199,22 @@ export async function listClientConsentSignatures(clientId, tenantId) {
     JOIN consent_templates t ON t.id = s.template_id AND t.tenant_id = s.tenant_id
     WHERE s.tenant_id = ? AND s.client_id = ?
     ORDER BY s.signed_at DESC, s.id DESC
+  `).all(tenantId, clientId);
+}
+
+export async function listClientPatientConsents(clientId, tenantId) {
+  return await db.prepare(`
+    SELECT pc.id, pc.template_id AS templateId, pc.appointment_id AS appointmentId,
+           pc.service_id AS serviceId, pc.status, pc.signed_at AS signedAt,
+           pc.expires_at AS expiresAt, pc.declined_at AS declinedAt,
+           pc.signature_id AS signatureId, pc.witness_user_id AS witnessUserId,
+           pc.created_at AS createdAt,
+           t.title AS templateTitle, t.language, u.name AS witnessName
+    FROM patient_consents pc
+    JOIN consent_templates t ON t.id = pc.template_id AND t.tenant_id = pc.tenant_id
+    LEFT JOIN users u ON u.id = pc.witness_user_id AND u.tenant_id = pc.tenant_id
+    WHERE pc.tenant_id = ? AND pc.client_id = ?
+    ORDER BY pc.id DESC
   `).all(tenantId, clientId);
 }
 
