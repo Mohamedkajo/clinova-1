@@ -34,6 +34,8 @@ async function main() {
     await copyConsentTemplates(client);
     await copyConsentSignatures(client);
     await copyPatientConsents(client);
+    await copyNotifications(client);
+    await copyAppointmentReminders(client);
     await copySettings(client);
     await copyTenantDomains(client);
     await copyBillingInvoices(client);
@@ -54,7 +56,7 @@ async function main() {
 }
 
 async function clearTables(client) {
-  await client.query("TRUNCATE audit_log, sessions, user_invitations, message_logs, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users RESTART IDENTITY CASCADE");
+  await client.query("TRUNCATE audit_log, sessions, user_invitations, message_logs, appointment_reminders, notifications, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users RESTART IDENTITY CASCADE");
 }
 
 async function copyUsers(client) {
@@ -72,8 +74,8 @@ async function copyCategories(client) {
   const rows = sqlite.prepare("SELECT * FROM categories ORDER BY id").all();
   for (const row of rows) {
     await client.query(
-      "INSERT INTO categories (id, name, active, created_at, updated_at) VALUES ($1,$2,$3,$4,$5)",
-      [row.id, row.name, Number(row.active ?? 1), row.created_at, row.updated_at]
+      "INSERT INTO categories (id, tenant_id, name, active, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)",
+      [row.id, row.tenant_id || 1, row.name, Number(row.active ?? 1), row.created_at, row.updated_at]
     );
   }
 }
@@ -82,9 +84,9 @@ async function copyServices(client) {
   const rows = sqlite.prepare("SELECT * FROM services ORDER BY id").all();
   for (const row of rows) {
     await client.query(
-      `INSERT INTO services (id, name, category_id, duration, price, active, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [row.id, row.name, row.category_id, row.duration, row.price, Number(row.active ?? 1), row.created_at, row.updated_at]
+      `INSERT INTO services (id, tenant_id, name, category_id, duration, price, active, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [row.id, row.tenant_id || 1, row.name, row.category_id, row.duration, row.price, Number(row.active ?? 1), row.created_at, row.updated_at]
     );
   }
 }
@@ -104,10 +106,11 @@ async function copyAppointments(client) {
   const rows = sqlite.prepare("SELECT * FROM appointments ORDER BY id").all();
   for (const row of rows) {
     await client.query(
-      `INSERT INTO appointments (id, client_id, service_id, therapist_id, date, time, status, payment_status, paid_amount, notes, active, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      `INSERT INTO appointments (id, tenant_id, client_id, service_id, therapist_id, date, time, status, payment_status, paid_amount, notes, active, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         row.id,
+        row.tenant_id || 1,
         row.client_id,
         row.service_id,
         row.therapist_id,
@@ -205,6 +208,42 @@ async function copyPatientConsents(client) {
   }
 }
 
+async function copyNotifications(client) {
+  const rows = sqlite.prepare("SELECT * FROM notifications ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO notifications (
+        id, tenant_id, user_id, type, title, message, related_entity_type,
+        related_entity_id, status, created_at, read_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        row.id, row.tenant_id, row.user_id, row.type, row.title, row.message,
+        row.related_entity_type || null, row.related_entity_id || null,
+        row.status || "unread", row.created_at, row.read_at || null,
+      ],
+    );
+  }
+}
+
+async function copyAppointmentReminders(client) {
+  const rows = sqlite.prepare("SELECT * FROM appointment_reminders ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO appointment_reminders (
+        id, tenant_id, appointment_id, reminder_type, channel, recipient,
+        scheduled_for, status, created_by, dispatched_at, cancelled_at,
+        last_error, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        row.id, row.tenant_id, row.appointment_id, row.reminder_type, row.channel,
+        row.recipient, row.scheduled_for, row.status || "pending", row.created_by || null,
+        row.dispatched_at || null, row.cancelled_at || null, row.last_error || "",
+        row.created_at, row.updated_at,
+      ],
+    );
+  }
+}
+
 async function copyBillingInvoices(client) {
   const rows = sqlite.prepare("SELECT * FROM billing_invoices ORDER BY id").all();
   for (const row of rows) {
@@ -279,15 +318,15 @@ async function copyAudit(client) {
   const rows = sqlite.prepare("SELECT * FROM audit_log ORDER BY id").all();
   for (const row of rows) {
     await client.query(
-      `INSERT INTO audit_log (id, user_id, action, entity, entity_id, details, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [row.id, row.user_id || null, row.action, row.entity, row.entity_id || null, row.details || "{}", row.created_at]
+      `INSERT INTO audit_log (id, tenant_id, user_id, action, entity, entity_id, details, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [row.id, row.tenant_id || 1, row.user_id || null, row.action, row.entity, row.entity_id || null, row.details || "{}", row.created_at]
     );
   }
 }
 
 async function resetSequences(client) {
-  for (const table of ["users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "tenant_domains", "billing_invoices", "client_files", "message_logs", "user_invitations", "audit_log"]) {
+  for (const table of ["users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "notifications", "appointment_reminders", "tenant_domains", "billing_invoices", "client_files", "message_logs", "user_invitations", "audit_log"]) {
     await client.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`);
   }
 }

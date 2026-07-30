@@ -3116,3 +3116,158 @@ html[dir="ltr"] .patient-profile-layer { justify-items: start; }
   .patient-clinical-visit > header,
   .patient-clinical-visit dl > div { grid-template-columns: 1fr; display: grid; }
 }
+
+/* Sprint 2.3 — internal notifications and reminder settings */
+.notification-center { position: relative; flex: 0 0 auto; }
+.notification-bell {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.notification-bell:hover,
+.notification-bell:focus-visible { border-color: var(--primary); color: var(--primary); }
+.notification-bell svg { width: 20px; height: 20px; }
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  padding: 0 4px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+.notification-popover {
+  position: absolute;
+  z-index: 350;
+  top: calc(100% + 10px);
+  inset-inline-end: 0;
+  width: min(380px, calc(100vw - 28px));
+  max-height: min(620px, calc(100vh - 104px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+.notification-popover > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.notification-popover > header > div { display: grid; gap: 2px; }
+.notification-popover h2 { margin: 0; font-size: 16px; }
+.notification-popover header span { color: var(--muted); font-size: 11px; }
+.notification-mark-all {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notification-mark-all:disabled { cursor: wait; opacity: .55; }
+.notification-list { max-height: min(520px, calc(100vh - 176px)); overflow-y: auto; }
+.notification-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 9px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.notification-item:last-child { border-bottom: 0; }
+.notification-item.is-unread { background: var(--primary-pale); }
+.notification-type-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+.notification-item-action {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+.notification-item-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.notification-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notification-item-heading strong { overflow-wrap: anywhere; font-size: 12px; }
+.notification-item-action > span:not(.notification-item-heading) { color: var(--muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.notification-item-action time { color: var(--muted); font-size: 10px; }
+.notification-unread-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
+.notification-boundary {
+  display: grid;
+  min-height: 150px;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px;
+  color: var(--muted);
+  text-align: center;
+}
+.notification-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: notification-spin .8s linear infinite;
+}
+@keyframes notification-spin { to { transform: rotate(360deg); } }
+.reminder-settings {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 4px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.reminder-settings legend { padding-inline: 6px; font-weight: 800; }
+
+@media (max-width: 600px) {
+  .notification-popover {
+    position: fixed;
+    top: 66px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: calc(100vh - 78px);
+  }
+  .notification-list { max-height: calc(100vh - 150px); }
+  .notification-bell { width: 38px; height: 38px; }
+  .reminder-settings { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-spinner { animation: none; }
+}

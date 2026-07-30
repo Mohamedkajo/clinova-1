@@ -125,9 +125,11 @@ export async function updateAppointment(id, tenantId, values) {
 
 export async function findAppointmentForStatus(id, tenantId) {
   return await db.prepare(`
-    SELECT a.*, s.name AS service_name
+    SELECT a.*, s.name AS service_name,
+           c.fname || ' ' || c.lname AS client_name
     FROM appointments a
     JOIN services s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+    JOIN clients c ON c.id = a.client_id AND c.tenant_id = a.tenant_id
     WHERE a.id = ? AND a.tenant_id = ? AND a.active = 1
   `).get(id, tenantId);
 }

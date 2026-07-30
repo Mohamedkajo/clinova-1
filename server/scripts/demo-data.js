@@ -31,6 +31,8 @@ await db.exec(`
   DELETE FROM sessions;
   DELETE FROM message_logs;
   DELETE FROM feedback_requests;
+  DELETE FROM appointment_reminders;
+  DELETE FROM notifications;
   DELETE FROM patient_consents;
   DELETE FROM consent_signatures;
   DELETE FROM consent_templates;

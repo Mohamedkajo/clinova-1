@@ -77,7 +77,7 @@ class PostgresAdapter {
       get: async (...values) => (await this.pool.query(pgSql(sql), pgValues(values))).rows[0],
       run: async (...values) => {
         let text = pgSql(sql);
-        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|patient_consents|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
+        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|patient_consents|notifications|appointment_reminders|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
         if (wantsId) text += " RETURNING id";
         const result = await this.pool.query(text, pgValues(values));
         return {
@@ -398,6 +398,35 @@ async function initSqlite() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      related_entity_type TEXT,
+      related_entity_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'unread' CHECK(status IN ('unread','read')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      read_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS appointment_reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+      reminder_type TEXT NOT NULL CHECK(reminder_type IN ('24h','same_day')),
+      channel TEXT NOT NULL CHECK(channel IN ('whatsapp','email')),
+      recipient TEXT NOT NULL,
+      scheduled_for TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','ready','sent','failed','cancelled')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      dispatched_at TEXT,
+      cancelled_at TEXT,
+      last_error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS feedback_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
@@ -550,6 +579,14 @@ async function initSqlite() {
     )
     WHERE status IN ('pending','signed')
   `);
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_status ON notifications(tenant_id, user_id, status, created_at)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reminders_tenant_status_schedule ON appointment_reminders(tenant_id, status, scheduled_for)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reminders_appointment ON appointment_reminders(tenant_id, appointment_id)");
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_active_unique
+    ON appointment_reminders(tenant_id, appointment_id, reminder_type)
+    WHERE status IN ('pending','ready')
+  `);
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");
@@ -603,6 +640,11 @@ async function seedSettings(tenantId = 1) {
     whatsappBusinessPhone: "",
     whatsappFeedbackTemplate: "שלום {client}, נשמח למשוב על הביקור שלך ב-{clinic}: {link}",
     whatsappGiftTemplate: "קיבלת מתנה מ-{from}: {sessions} جلسة {service}. קוד המתנה: {code}. {message}",
+    appointmentRemindersEnabled: "true",
+    reminderTimingHours: "24",
+    sameDayReminderEnabled: "false",
+    sameDayReminderTime: "08:00",
+    reminderChannel: "whatsapp",
   });
   const insert = db.prepare(`
     INSERT INTO clinic_settings (tenant_id, key, value) VALUES (?, ?, ?)

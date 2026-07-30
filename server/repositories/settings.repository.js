@@ -19,6 +19,11 @@ export async function updateClinicSettings(values, tenantId) {
     "whatsappBusinessPhone",
     "whatsappFeedbackTemplate",
     "whatsappGiftTemplate",
+    "appointmentRemindersEnabled",
+    "reminderTimingHours",
+    "sameDayReminderEnabled",
+    "sameDayReminderTime",
+    "reminderChannel",
   ];
   const stmt = await db.prepare(`
     INSERT INTO clinic_settings (tenant_id, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)

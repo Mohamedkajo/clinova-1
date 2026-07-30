@@ -262,6 +262,37 @@ CREATE TABLE IF NOT EXISTS patient_consents (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  related_entity_type TEXT,
+  related_entity_id BIGINT,
+  status TEXT NOT NULL DEFAULT 'unread' CHECK (status IN ('unread','read')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS appointment_reminders (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  appointment_id BIGINT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  reminder_type TEXT NOT NULL CHECK (reminder_type IN ('24h','same_day')),
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp','email')),
+  recipient TEXT NOT NULL,
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','ready','sent','failed','cancelled')),
+  created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  dispatched_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  last_error TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS stored_name TEXT DEFAULT '';
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'clinical';
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL;
@@ -285,6 +316,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_consents_active_unique
     COALESCE(appointment_id, 0), COALESCE(service_id, 0)
   )
   WHERE status IN ('pending','signed');
+CREATE INDEX IF NOT EXISTS idx_notifications_user_status
+  ON notifications(tenant_id, user_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_reminders_tenant_status_schedule
+  ON appointment_reminders(tenant_id, status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_reminders_appointment
+  ON appointment_reminders(tenant_id, appointment_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_active_unique
+  ON appointment_reminders(tenant_id, appointment_id, reminder_type)
+  WHERE status IN ('pending','ready');
 
 CREATE TABLE IF NOT EXISTS feedback_requests (
   id BIGSERIAL PRIMARY KEY,

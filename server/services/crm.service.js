@@ -11,6 +11,7 @@ import {
   updateCrmTask,
 } from "../repositories/crm.repository.js";
 import { isValidIsoDate } from "../shared/validation/date-time.js";
+import { notifyFollowUpRequired } from "./notifications.service.js";
 
 function validOptionalDate(value) {
   return value === undefined || value === null || value === "" || isValidIsoDate(value);
@@ -70,6 +71,13 @@ export async function addCrmTask(user, body) {
   });
   await addCrmEvent({ tenantId: user.tenantId, clientId: body.clientId, userId: user.id, type: "task_created", description: title });
   await auditCrmTask(user.id, "create", id, user.tenantId);
+  if ((body.type || "follow_up") === "follow_up") {
+    await notifyFollowUpRequired({
+      tenantId: user.tenantId,
+      therapistId: assignedTo,
+      clientId: body.clientId,
+    });
+  }
   return { status: 201, body: { id } };
 }
 

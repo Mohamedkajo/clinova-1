@@ -35,6 +35,7 @@ import {
   updateConsentTemplateUrl,
 } from "../repositories/consents.repository.js";
 import { canSeeClient } from "../repositories/files.repository.js";
+import { notifyConsentPending } from "./notifications.service.js";
 
 function pdfSafeText(value) {
   return String(value ?? "").slice(0, 120);
@@ -299,6 +300,11 @@ export async function assignPatientConsent(user, clientId, body) {
     tenantId: user.tenantId, clientId, userId: user.id, appointmentId, type: "consent_assigned",
   });
   await auditConsent(user.id, "assign", "patient_consents", id, { tenantId: user.tenantId, templateId, clientId, appointmentId });
+  await notifyConsentPending({
+    tenantId: user.tenantId,
+    appointmentId,
+    clientId,
+  });
   return { status: 201, body: await patientConsentById(id, user.tenantId) };
 }
 

@@ -22,6 +22,16 @@ import {
 import { permissions } from "../repositories/permissions.repository.js";
 import { clinicSettings } from "../repositories/settings.repository.js";
 import { isValidIsoDate, isValidTime } from "../shared/validation/date-time.js";
+import {
+  notifyAppointmentAssigned,
+  notifyAppointmentRescheduled,
+  notifyAppointmentStatusChanged,
+  notifyConsentPending,
+} from "./notifications.service.js";
+import {
+  cancelRemindersForAppointment,
+  syncAppointmentReminders,
+} from "./reminders.service.js";
 
 function toMinutes(time) {
   const [hours, minutes] = String(time || "00:00").split(":").map(Number);
@@ -304,6 +314,25 @@ export async function addAppointment(user, body) {
     description: `Appointment booked for ${values.date} ${values.time}`,
   });
   await auditAppointment(user.id, "create", id, user.tenantId);
+  await syncAppointmentReminders({
+    tenantId: user.tenantId,
+    appointmentId: id,
+    actorUserId: user.id,
+  });
+  await notifyAppointmentAssigned({ tenantId: user.tenantId, appointmentId: id });
+  const pendingConsents = await missingLegalConsents({
+    tenantId: user.tenantId,
+    clientId: values.clientId,
+    appointmentId: id,
+    serviceId: values.serviceId,
+  });
+  if (pendingConsents.length) {
+    await notifyConsentPending({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      clientId: values.clientId,
+    });
+  }
   return { status: 201, body: { id } };
 }
 
@@ -333,6 +362,35 @@ export async function editAppointment(user, id, body) {
 
   const changes = await updateAppointment(id, user.tenantId, values);
   if (!changes) return { status: 404, body: { error: "Appointment not found." } };
+  const rescheduled = existing.date !== values.date || existing.time !== values.time;
+  const reminderContextChanged = rescheduled
+    || Number(existing.client_id) !== Number(values.clientId)
+    || existing.status !== values.status;
+  if (values.status === "pending") {
+    await syncAppointmentReminders({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+      replace: reminderContextChanged,
+    });
+  } else {
+    await cancelRemindersForAppointment({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+      reason: values.status === "cancelled" ? "appointment_cancelled" : "appointment_completed",
+    });
+  }
+  if (rescheduled) {
+    await notifyAppointmentRescheduled({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+    });
+  }
+  if (Number(existing.therapist_id) !== Number(values.therapistId)) {
+    await notifyAppointmentAssigned({ tenantId: user.tenantId, appointmentId: id });
+  }
   if (existing.status !== values.status) {
     await addAppointmentTimelineEvent({
       tenantId: user.tenantId,
@@ -341,6 +399,13 @@ export async function editAppointment(user, id, body) {
       appointmentId: id,
       type: "appointment_status_changed",
       description: `${existing.status} -> ${values.status}`,
+    });
+    await notifyAppointmentStatusChanged({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+      previousStatus: existing.status,
+      status: values.status,
     });
   }
   await auditAppointment(user.id, "update", id, user.tenantId);
@@ -371,6 +436,20 @@ export async function changeAppointmentStatus(user, id, body) {
   }
   const changes = await updateAppointmentStatus(id, user.tenantId, body.status);
   if (!changes) return { status: 404, body: { error: "Appointment not found." } };
+  if (body.status === "pending") {
+    await syncAppointmentReminders({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+    });
+  } else {
+    await cancelRemindersForAppointment({
+      tenantId: user.tenantId,
+      appointmentId: id,
+      actorUserId: user.id,
+      reason: body.status === "cancelled" ? "appointment_cancelled" : "appointment_completed",
+    });
+  }
   await addAppointmentTimelineEvent({
     tenantId: user.tenantId,
     clientId: appointment.client_id,
@@ -379,13 +458,40 @@ export async function changeAppointmentStatus(user, id, body) {
     type: "appointment_status_changed",
     description: `${appointment.status} -> ${body.status}`,
   });
+  await notifyAppointmentStatusChanged({
+    tenantId: user.tenantId,
+    appointmentId: id,
+    actorUserId: user.id,
+    previousStatus: appointment.status,
+    status: body.status,
+  });
   await auditAppointment(user.id, "status", id, user.tenantId);
   return { status: 200, body: { ok: true, status: body.status } };
 }
 
 export async function removeAppointment(user, id) {
+  const appointment = await findAppointmentForStatus(id, user.tenantId);
+  if (!appointment) return { status: 404, body: { error: "Appointment not found." } };
   const changes = await archiveAppointment(id, user.tenantId);
   if (!changes) return { status: 404, body: { error: "Appointment not found." } };
+  await cancelRemindersForAppointment({
+    tenantId: user.tenantId,
+    appointmentId: id,
+    actorUserId: user.id,
+    reason: "appointment_archived",
+  });
+  await notifyAppointmentStatusChanged({
+    tenantId: user.tenantId,
+    appointmentId: id,
+    actorUserId: user.id,
+    previousStatus: appointment.status,
+    status: "cancelled",
+    appointment: {
+      ...appointment,
+      clientName: appointment.client_name,
+      therapistId: appointment.therapist_id,
+    },
+  });
   await auditAppointment(user.id, "archive", id, user.tenantId);
   return { status: 200, body: { ok: true } };
 }

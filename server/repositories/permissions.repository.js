@@ -5,6 +5,8 @@ export const permissions = {
   reports: ["admin"],
   audit: ["admin"],
   settings_write: ["admin"],
+  notifications: ["admin", "reception", "therapist"],
+  reminders_manage: ["admin", "reception"],
   consents: ["admin", "reception", "therapist"],
   consents_write: ["admin", "reception"],
   consent_templates_manage: ["admin"],

@@ -8,6 +8,10 @@ import {
   findClinicalVisitByAppointment,
   updateClinicalVisit,
 } from "../repositories/clinical-visits.repository.js";
+import {
+  notifyClinicalVisitCompleted,
+  notifyFollowUpRequired,
+} from "./notifications.service.js";
 
 const fields = {
   treatmentSummary: { required: true, max: 4000 },
@@ -154,5 +158,14 @@ export async function finishClinicalVisit(user, visitId) {
   const visit = await findClinicalVisit(user, visitId);
   await addClinicalVisitTimelineEvent({ user, visit, type: "clinical_visit_completed", description: "Clinical visit record completed." });
   await auditClinicalVisit(user, "complete", visit);
+  await notifyClinicalVisitCompleted({ user, visit });
+  if (String(visit.follow_up_instructions || "").trim()) {
+    await notifyFollowUpRequired({
+      tenantId: user.tenantId,
+      therapistId: visit.therapist_id,
+      clientId: visit.client_id,
+      appointmentId: visit.appointment_id,
+    });
+  }
   return { status: 200, body: clinicalVisitFromRow(visit) };
 }

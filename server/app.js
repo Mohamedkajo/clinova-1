@@ -22,6 +22,8 @@ import { searchRoutes } from "./routes/search.routes.js";
 import { feedbackRoutes } from "./routes/feedback.routes.js";
 import { crmRoutes } from "./routes/crm.routes.js";
 import { billingRoutes } from "./routes/billing.routes.js";
+import { notificationsRoutes } from "./routes/notifications.routes.js";
+import { remindersRoutes } from "./routes/reminders.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { giftsRoutes } from "./modules/gifts/gifts.routes.js";
 import { statusRoutes } from "./modules/status/status.routes.js";
@@ -48,6 +50,8 @@ import { handleFeedbackRoute } from "./controllers/feedback.controller.js";
 import { handleCrmRoute } from "./controllers/crm.controller.js";
 import { handleBillingRoute } from "./controllers/billing.controller.js";
 import { handleWhatsAppRoute } from "./controllers/whatsapp.controller.js";
+import { handleNotificationsRoute } from "./controllers/notifications.controller.js";
+import { handleRemindersRoute } from "./controllers/reminders.controller.js";
 import { handleCatalogRoute } from "./modules/catalog/catalog.controller.js";
 import { handleGiftsRoute } from "./modules/gifts/gifts.controller.js";
 import { handleStatusRoute } from "./modules/status/status.controller.js";
@@ -76,6 +80,8 @@ const registeredRoutes = [
   ...feedbackRoutes,
   ...crmRoutes,
   ...billingRoutes,
+  ...notificationsRoutes,
+  ...remindersRoutes,
   ...whatsappRoutes,
   ...catalogRoutes,
   ...giftsRoutes,
@@ -218,6 +224,16 @@ async function handleApi(req, res, url) {
     }
     if (matchedRoute.module === "billing") {
       if (await handleBillingRoute(req, res, url)) return;
+      apiNotFound(res);
+      return;
+    }
+    if (matchedRoute.module === "notifications") {
+      if (await handleNotificationsRoute(req, res, url)) return;
+      apiNotFound(res);
+      return;
+    }
+    if (matchedRoute.module === "reminders") {
+      if (await handleRemindersRoute(req, res, url)) return;
       apiNotFound(res);
       return;
     }

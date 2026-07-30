@@ -12,6 +12,7 @@ import {
 } from "./patient-workspace.js";
 import { renderBookingWorkflow, selectedServiceDuration } from "./booking-workflow.js";
 import { renderClinicalVisit } from "./clinical-visit.js";
+import { notificationTarget, renderNotificationCenter } from "./notification-center.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -48,6 +49,14 @@ const state = {
   lang: ["he", "ar", "en"].includes(localStorage.getItem("clinova-lang")) ? localStorage.getItem("clinova-lang") : "he",
   reportTab: "overview",
   mobileNavOpen: false,
+  notificationCenter: {
+    status: "idle",
+    error: "",
+    items: [],
+    unreadCount: 0,
+    open: false,
+    actionPending: false,
+  },
 };
 
 const APP_VERSION = "1.8.0-alpha.1";
@@ -1195,6 +1204,46 @@ async function loadData() {
     }
   }
   state.data = data;
+  await refreshNotifications({ render: false });
+}
+
+async function refreshNotifications({ render = true } = {}) {
+  if (!state.user || state.user.platformOwner) {
+    state.notificationCenter = {
+      status: "idle",
+      error: "",
+      items: [],
+      unreadCount: 0,
+      open: false,
+      actionPending: false,
+    };
+    return;
+  }
+  state.notificationCenter.status = "loading";
+  state.notificationCenter.error = "";
+  if (render) renderApp();
+  try {
+    const result = await api("/api/notifications");
+    state.notificationCenter = {
+      ...state.notificationCenter,
+      status: "ready",
+      error: "",
+      items: result.items || [],
+      unreadCount: result.unreadCount || 0,
+    };
+  } catch (error) {
+    state.notificationCenter = {
+      ...state.notificationCenter,
+      status: "error",
+      error: localizedError(error),
+    };
+  }
+  if (render) {
+    renderApp();
+    if (state.notificationCenter.open) {
+      focusNotificationControl(".notification-popover button, .notification-popover [tabindex]");
+    }
+  }
 }
 
 function renderAppLegacy() {
@@ -3554,6 +3603,10 @@ function renderFoundationShell() {
           </div>
           <div class="topbar-actions foundation-actions">
             ${topActionI18n()}
+            ${state.user.platformOwner ? "" : renderNotificationCenter({
+              language: state.lang,
+              state: state.notificationCenter,
+            })}
             ${renderFoundationLanguagePicker()}
             <details class="user-menu">
               <summary aria-label="${escapeAttr(foundationText(state.lang, "shell.userMenu"))}"><span class="user-avatar">${escapeHtml((state.user.name || state.user.username || "C").trim().slice(0, 1).toUpperCase())}</span><span class="user-menu-name">${safeUserName}</span></summary>
@@ -3577,8 +3630,84 @@ async function logoutFromFoundation() {
     state.data = {};
     state.appointmentWorkspace = { status: "idle", error: "", queue: [], filters: { therapistId: "", status: "", serviceId: "" } };
     state.patientWorkspace = { status: "idle", error: "", data: null, filters: { ...emptyPatientFilters } };
+    state.notificationCenter = { status: "idle", error: "", items: [], unreadCount: 0, open: false, actionPending: false };
     setProtectedRoute("login", { replace: true });
   }
+}
+
+function focusNotificationControl(selector) {
+  requestAnimationFrame(() => document.querySelector(selector)?.focus());
+}
+
+function closeNotificationCenter({ restoreFocus = false } = {}) {
+  state.notificationCenter.open = false;
+  renderApp();
+  if (restoreFocus) focusNotificationControl("[data-notification-toggle]");
+}
+
+async function activateNotification(id) {
+  if (state.notificationCenter.actionPending) return;
+  const item = state.notificationCenter.items.find((entry) => Number(entry.id) === Number(id));
+  if (!item) return;
+  state.notificationCenter.actionPending = true;
+  renderApp();
+  try {
+    if (item.status === "unread") {
+      const result = await api(`/api/notifications/${id}/read`, { method: "PATCH" });
+      item.status = "read";
+      item.readAt = new Date().toISOString();
+      state.notificationCenter.unreadCount = result.unreadCount || 0;
+    }
+    state.notificationCenter.actionPending = false;
+    state.notificationCenter.open = false;
+    const target = notificationTarget(item);
+    renderApp();
+    if (target?.page === "appointments") await openAppointmentDetails(target.id);
+    if (target?.page === "clients") await openClientProfile(target.id);
+  } catch (error) {
+    state.notificationCenter.actionPending = false;
+    renderApp();
+    showCenterError(localizedError(error));
+  }
+}
+
+function bindNotificationCenterActions() {
+  document.querySelector("[data-notification-toggle]")?.addEventListener("click", () => {
+    const opening = !state.notificationCenter.open;
+    state.notificationCenter.open = opening;
+    renderApp();
+    if (opening) {
+      void refreshNotifications();
+      return;
+    }
+  });
+  document.querySelector("[data-notification-retry]")?.addEventListener("click", () => void refreshNotifications());
+  document.querySelector("[data-notification-read-all]")?.addEventListener("click", async () => {
+    if (state.notificationCenter.actionPending) return;
+    state.notificationCenter.actionPending = true;
+    renderApp();
+    try {
+      await api("/api/notifications/read-all", { method: "POST" });
+      state.notificationCenter.items.forEach((item) => {
+        item.status = "read";
+        item.readAt ||= new Date().toISOString();
+      });
+      state.notificationCenter.unreadCount = 0;
+      state.notificationCenter.actionPending = false;
+      renderApp();
+      focusNotificationControl("[data-notification-toggle]");
+    } catch (error) {
+      state.notificationCenter.actionPending = false;
+      renderApp();
+      showCenterError(localizedError(error));
+    }
+  });
+  document.querySelectorAll("[data-notification-id]").forEach((button) => {
+    button.addEventListener("click", () => void activateNotification(Number(button.dataset.notificationId)));
+  });
+  document.querySelector(".notification-popover")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeNotificationCenter({ restoreFocus: true });
+  });
 }
 
 renderApp = function () {
@@ -3601,6 +3730,7 @@ renderApp = function () {
   document.getElementById("closeMobileNav")?.addEventListener("click", () => toggleNavigation(false));
   document.getElementById("sidebarCloseButton")?.addEventListener("click", () => toggleNavigation(false));
   bindPageActions();
+  bindNotificationCenterActions();
 }
 
 renderLogin = function (error = "", values = {}) {
@@ -4290,6 +4420,33 @@ renderSettingsClean = function (message = "") {
         ${field("workStart", uiText("بداية الدوام", "תחילת יום עבודה"), s.workStart || "09:00", "time")}
         ${field("workEnd", uiText("نهاية الدوام", "סיום יום עבודה"), s.workEnd || "18:00", "time")}
         <div class="field full"><label>${uiText("أيام العمل", "ימי עבודה")}</label>${cleanWorkDaysPicker(s.workDays)}</div>
+        <fieldset class="reminder-settings">
+          <legend>${uiText("تذكيرات المواعيد", "תזכורות לתורים", "Appointment reminders")}</legend>
+          <div class="field">
+            <label for="appointmentRemindersEnabled">${uiText("تفعيل التذكيرات", "הפעלת תזכורות", "Enable reminders")}</label>
+            <select id="appointmentRemindersEnabled" name="appointmentRemindersEnabled">
+              <option value="true" ${String(s.appointmentRemindersEnabled) !== "false" ? "selected" : ""}>${uiText("مفعّلة", "פעיל", "Enabled")}</option>
+              <option value="false" ${String(s.appointmentRemindersEnabled) === "false" ? "selected" : ""}>${uiText("متوقفة", "כבוי", "Disabled")}</option>
+            </select>
+          </div>
+          ${field("reminderTimingHours", uiText("قبل الموعد بساعات", "שעות לפני התור", "Hours before appointment"), s.reminderTimingHours || "24", "number")}
+          <div class="field">
+            <label for="sameDayReminderEnabled">${uiText("تذكير في نفس اليوم", "תזכורת ביום התור", "Same-day reminder")}</label>
+            <select id="sameDayReminderEnabled" name="sameDayReminderEnabled">
+              <option value="false" ${String(s.sameDayReminderEnabled) !== "true" ? "selected" : ""}>${uiText("متوقف", "כבוי", "Disabled")}</option>
+              <option value="true" ${String(s.sameDayReminderEnabled) === "true" ? "selected" : ""}>${uiText("مفعّل", "פעיל", "Enabled")}</option>
+            </select>
+          </div>
+          ${field("sameDayReminderTime", uiText("وقت تذكير نفس اليوم", "שעת תזכורת ביום התור", "Same-day reminder time"), s.sameDayReminderTime || "08:00", "time")}
+          <div class="field">
+            <label for="reminderChannel">${uiText("القناة المفضلة", "ערוץ מועדף", "Preferred channel")}</label>
+            <select id="reminderChannel" name="reminderChannel">
+              <option value="whatsapp" ${s.reminderChannel !== "email" ? "selected" : ""}>WhatsApp</option>
+              <option value="email" ${s.reminderChannel === "email" ? "selected" : ""}>Email</option>
+            </select>
+          </div>
+          <p class="muted full">${uiText("لا تُرسل رسائل خارجية في هذه المرحلة؛ يتم تجهيز السجلات والمحاكاة محلياً فقط.", "בשלב זה לא נשלחות הודעות חיצוניות; הרשומות מוכנות ומדומות מקומית בלבד.", "No external messages are sent in this sprint; records are prepared and simulated locally only.")}</p>
+        </fieldset>
         <button class="btn">${clean("save")}</button>
       </form><div class="backup-panel"><h3>${uiText("نسخة احتياطية", "גיבוי מערכת")}</h3><p class="muted">${uiText("تحميل نسخة من قاعدة البيانات إلى هذا الجهاز.", "הורדת גיבוי של בסיס הנתונים למחשב זה.")}</p><a class="btn secondary" href="/api/system/export" download>${uiText("تحميل النسخة", "הורדת גיבוי")}</a></div></div>` : ""}
       <div class="card"><h3>${uiText("تغيير كلمة المرور", "שינוי סיסמה")}</h3><form id="passwordForm">${field("currentPassword", uiText("كلمة المرور الحالية", "סיסמה נוכחית"), "", "password")}${field("newPassword", uiText("كلمة مرور جديدة", "סיסמה חדשה"), "", "password")}<button class="btn">${uiText("تغيير", "שינוי")}</button></form></div>
