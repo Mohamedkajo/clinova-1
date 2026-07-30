@@ -13,6 +13,7 @@ import {
 import { renderBookingWorkflow, selectedServiceDuration } from "./booking-workflow.js";
 import { renderClinicalVisit } from "./clinical-visit.js";
 import { notificationTarget, renderNotificationCenter } from "./notification-center.js";
+import { billingStatus, renderBillingWorkspace } from "./patient-billing.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -43,6 +44,11 @@ const state = {
     error: "",
     data: null,
     filters: { ...emptyPatientFilters },
+  },
+  billingWorkspace: {
+    status: "idle",
+    error: "",
+    items: [],
   },
   quickSearch: "",
   quickResults: null,
@@ -590,6 +596,22 @@ async function refreshPatientWorkspace({ renderLoading = true } = {}) {
   if (state.page === "clients") renderApp();
 }
 
+async function refreshBillingWorkspace({ renderLoading = true } = {}) {
+  if (!state.user || state.user.platformOwner || state.user.role === "therapist" || state.page !== "billing") return;
+  state.billingWorkspace.status = "loading";
+  state.billingWorkspace.error = "";
+  if (renderLoading) renderApp();
+  try {
+    const result = await api("/api/patient-finance/invoices");
+    state.billingWorkspace.items = result.items || [];
+    state.billingWorkspace.status = "ready";
+  } catch (error) {
+    state.billingWorkspace.status = "error";
+    state.billingWorkspace.error = localizedError(error);
+  }
+  if (state.page === "billing") renderApp();
+}
+
 function closeAppointmentDrawer() {
   closeModal();
 }
@@ -1131,6 +1153,7 @@ function bindPageActions() {
       renderApp();
     }
   });
+  bindBillingActions();
   bindRestoredSectionActions();
 }
 
@@ -1153,6 +1176,7 @@ async function boot() {
   renderApp();
   if (state.page === "calendar") void refreshAppointmentWorkspace();
   if (state.page === "clients") void refreshPatientWorkspace();
+  if (state.page === "billing") void refreshBillingWorkspace();
 }
 
 function renderLoginLegacy(error = "") {
@@ -1312,6 +1336,7 @@ function bindPatientProfile(id) {
   bindModalAccessibility({ focusSelector: ".patient-profile-panel [data-close-patient-profile]" });
   root?.querySelector("[data-patient-retry]")?.addEventListener("click", () => void openClientProfile(id));
   root?.querySelectorAll("[data-patient-appointment-details]").forEach((button) => button.addEventListener("click", () => void openAppointmentDetails(Number(button.dataset.patientAppointmentDetails))));
+  root?.querySelectorAll("[data-patient-invoice]").forEach((button) => button.addEventListener("click", () => void openPatientInvoiceDetails(Number(button.dataset.patientInvoice))));
   const noteForm = root?.querySelector("#clientNoteForm");
   if (noteForm) noteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -3409,8 +3434,144 @@ renderSettingsClean = function (message = "") {
   return html`<div class="settings-grid"><div class="card"><h3>${pageLabel("settings")}</h3>${message ? `<div class="alert">${message}</div>` : ""}<form id="clinicSettingsForm">${field("clinicName", state.lang === "he" ? "שם הקליניקה" : "اسم العيادة", s.clinicName || "Clinova")}${field("currency", state.lang === "he" ? "מטבע" : "العملة", s.currency || "₪")}${field("workStart", state.lang === "he" ? "תחילת יום" : "بداية الدوام", s.workStart || "09:00", "time")}${field("workEnd", state.lang === "he" ? "סיום יום" : "نهاية الدوام", s.workEnd || "18:00", "time")}<button class="btn">${clean("save")}</button></form></div></div>`;
 }
 
+function invoiceLineFields(item = {}, index = 0) {
+  const services = (state.data.services || []).filter((service) => service.active !== false);
+  return `<fieldset class="invoice-item-row"><legend>${uiText(`بند ${index + 1}`, `שורה ${index + 1}`, `Item ${index + 1}`)}</legend>
+    <select name="serviceId${index}" ${index === 0 ? "required" : ""}><option value=""></option>${services.map((service) => `<option value="${escapeAttr(service.id)}" ${Number(item.serviceId) === Number(service.id) ? "selected" : ""}>${escapeHtml(service.name)}</option>`).join("")}</select>
+    <input name="description${index}" value="${escapeAttr(item.description || "")}" placeholder="${uiText("الوصف", "תיאור", "Description")}" ${index === 0 ? "required" : ""}>
+    <input name="quantity${index}" value="${escapeAttr(item.quantity || 1)}" type="number" min="1" step="1" aria-label="${uiText("الكمية", "כמות", "Quantity")}">
+    <input name="unitPrice${index}" value="${escapeAttr(item.unitPrice || "")}" type="number" min="0" step="0.01" placeholder="${uiText("السعر", "מחיר", "Price")}" ${index === 0 ? "required" : ""}>
+    <input name="itemDiscount${index}" value="${escapeAttr(item.discount || "0")}" type="number" min="0" step="0.01" placeholder="${uiText("خصم", "הנחה", "Discount")}">
+    <input name="itemTax${index}" value="${escapeAttr(item.tax || "0")}" type="number" min="0" step="0.01" placeholder="${uiText("ضريبة", "מס", "Tax")}">
+  </fieldset>`;
+}
+
+async function openPatientInvoiceForm(invoice = null, defaults = {}) {
+  beginModalInteraction();
+  const patients = state.data.clients || [];
+  const appointments = (state.data.appointments || []).filter((appointment) => appointment.status !== "cancelled");
+  const patientId = invoice?.patientId || defaults.patientId || "";
+  const appointmentId = invoice?.appointmentId || defaults.appointmentId || "";
+  const root = document.getElementById("modalRoot");
+  root.innerHTML = `<div class="modal"><form class="modal-card wide" id="patientInvoiceForm" role="dialog" aria-modal="true" aria-labelledby="patientInvoiceTitle">
+    <div class="modal-head"><h3 id="patientInvoiceTitle">${invoice ? uiText("تعديل مسودة", "עריכת טיוטה", "Edit draft") : uiText("فاتورة مريض جديدة", "חשבונית מטופל חדשה", "New patient invoice")}</h3><button class="btn ghost" type="button" id="closeModal">${clean("close")}</button></div>
+    <div class="modal-body">
+      ${select("patientId", uiText("المريض", "מטופל", "Patient"), patients.map((patient) => [patient.id, `${patient.fname} ${patient.lname}`]), patientId)}
+      ${select("appointmentId", uiText("الموعد", "תור", "Appointment"), [["", "—"], ...appointments.map((appointment) => [appointment.id, `${appointment.date} ${appointment.time} · ${appointment.clientName} · ${appointment.serviceName}`])], appointmentId, false)}
+      <div class="invoice-items full">${[0, 1, 2].map((index) => invoiceLineFields(invoice?.items?.[index] || {}, index)).join("")}</div>
+      ${field("discount", uiText("خصم الفاتورة", "הנחת חשבונית", "Invoice discount"), invoice?.discount || "0", "number", false)}
+      ${field("tax", uiText("ضريبة الفاتورة", "מס חשבונית", "Invoice tax"), invoice?.tax || "0", "number", false)}
+      ${field("currency", uiText("العملة", "מטבע", "Currency"), invoice?.currency || "ILS")}
+    </div><div class="modal-foot"><button class="btn" type="submit">${clean("save")}</button><div id="formError" class="form-message" role="alert" tabindex="-1"></div></div>
+  </form></div>`;
+  root.querySelector("#closeModal").addEventListener("click", closeModal);
+  bindModalAccessibility({ focusSelector: "[name='patientId']" });
+  root.querySelectorAll(".invoice-item-row select").forEach((serviceSelect) => serviceSelect.addEventListener("change", () => {
+    const index = serviceSelect.name.replace("serviceId", "");
+    const service = (state.data.services || []).find((item) => Number(item.id) === Number(serviceSelect.value));
+    if (!service) return;
+    const description = root.querySelector(`[name='description${index}']`);
+    const price = root.querySelector(`[name='unitPrice${index}']`);
+    if (!description.value) description.value = service.name;
+    if (!price.value) price.value = service.price || 0;
+  }));
+  root.querySelector("#patientInvoiceForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (form.getAttribute("aria-busy") === "true") return;
+    const values = Object.fromEntries(new FormData(form));
+    const items = [0, 1, 2].map((index) => ({
+      serviceId: values[`serviceId${index}`] ? Number(values[`serviceId${index}`]) : null,
+      description: values[`description${index}`],
+      quantity: Number(values[`quantity${index}`] || 1),
+      unitPrice: values[`unitPrice${index}`],
+      discount: values[`itemDiscount${index}`] || "0",
+      tax: values[`itemTax${index}`] || "0",
+    })).filter((item) => item.description || item.unitPrice);
+    const body = { patientId: Number(values.patientId), appointmentId: values.appointmentId ? Number(values.appointmentId) : null, items, discount: values.discount || "0", tax: values.tax || "0", currency: values.currency };
+    form.setAttribute("aria-busy", "true");
+    form.querySelector("[type='submit']").disabled = true;
+    try {
+      const result = await api(invoice ? `/api/patient-finance/invoices/${invoice.id}` : "/api/patient-finance/invoices", { method: invoice ? "PUT" : "POST", body });
+      closeModal();
+      await refreshBillingWorkspace({ renderLoading: false });
+      await openPatientInvoiceDetails(result.invoice.id);
+    } catch (error) {
+      form.removeAttribute("aria-busy");
+      form.querySelector("[type='submit']").disabled = false;
+      const errorBox = root.querySelector("#formError");
+      errorBox.textContent = localizedError(error);
+      errorBox.focus();
+    }
+  });
+}
+
+async function invoiceMutation(endpoint, invoiceId) {
+  try {
+    await api(endpoint, { method: "POST" });
+    await refreshBillingWorkspace({ renderLoading: false });
+    await openPatientInvoiceDetails(invoiceId);
+  } catch (error) {
+    showCenterError(localizedError(error));
+  }
+}
+
+async function openPatientInvoiceDetails(id) {
+  beginModalInteraction();
+  const root = document.getElementById("modalRoot");
+  root.innerHTML = `<div class="modal"><div class="modal-card"><div class="billing-boundary">${uiText("جارٍ التحميل…", "טוען…", "Loading…")}</div></div></div>`;
+  try {
+    const { invoice } = await api(`/api/patient-finance/invoices/${id}`);
+    const admin = state.user.role === "admin";
+    const payable = ["issued", "partially_paid"].includes(invoice.status);
+    root.innerHTML = `<div class="modal"><section class="modal-card wide invoice-details" role="dialog" aria-modal="true" aria-labelledby="invoiceDetailsTitle">
+      <div class="modal-head"><div><span>${escapeHtml(billingStatus(invoice.status, state.lang))}</span><h3 id="invoiceDetailsTitle">${escapeHtml(invoice.invoiceNumber)}</h3></div><button class="btn ghost" type="button" id="closeModal">${clean("close")}</button></div>
+      <div class="modal-body"><div class="invoice-totals full">
+        <div><span>${uiText("المريض", "מטופל", "Patient")}</span><strong>${escapeHtml(invoice.patientName)}</strong></div>
+        <div><span>${uiText("الإجمالي", "סה״כ", "Total")}</span><strong>${escapeHtml(invoice.total)} ${escapeHtml(invoice.currency)}</strong></div>
+        <div><span>${uiText("المدفوع", "שולם", "Paid")}</span><strong>${escapeHtml(invoice.paid)} ${escapeHtml(invoice.currency)}</strong></div>
+        <div><span>${uiText("المتبقي", "יתרה", "Outstanding")}</span><strong>${escapeHtml(invoice.outstanding)} ${escapeHtml(invoice.currency)}</strong></div>
+      </div><div class="billing-table-wrap full"><table class="billing-table"><thead><tr><th>${uiText("الوصف", "תיאור", "Description")}</th><th>${uiText("الكمية", "כמות", "Qty")}</th><th>${uiText("السعر", "מחיר", "Price")}</th><th>${uiText("الإجمالي", "סה״כ", "Total")}</th></tr></thead><tbody>${invoice.items.map((item) => `<tr><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.quantity)}</td><td>${escapeHtml(item.unitPrice)}</td><td>${escapeHtml(item.lineTotal)}</td></tr>`).join("")}</tbody></table></div>
+      ${payable ? `<form id="patientPaymentForm" class="invoice-payment-form full"><h4>${uiText("تسجيل دفعة", "רישום תשלום", "Record payment")}</h4><input type="number" min="0.01" step="0.01" max="${escapeAttr(invoice.outstanding)}" name="amount" required><select name="paymentMethod"><option value="cash">${uiText("نقداً", "מזומן", "Cash")}</option><option value="card">${uiText("بطاقة", "כרטיס", "Card")}</option><option value="bank_transfer">${uiText("تحويل بنكي", "העברה בנקאית", "Bank transfer")}</option><option value="check">${uiText("شيك", "המחאה", "Check")}</option><option value="other">${uiText("أخرى", "אחר", "Other")}</option></select><input name="reference" placeholder="${uiText("مرجع اختياري", "אסמכתא אופציונלית", "Optional reference")}"><button class="btn" type="submit">${uiText("تسجيل", "רישום", "Record")}</button><div id="paymentError" role="alert"></div></form>` : ""}
+      <section class="full"><h4>${uiText("الدفعات", "תשלומים", "Payments")}</h4><div class="stack-list">${invoice.payments.map((payment) => `<div class="feature-row"><div><strong>${escapeHtml(payment.amount)} ${escapeHtml(invoice.currency)}</strong><span>${escapeHtml(payment.paymentMethod)} · ${escapeHtml(payment.paymentDate)} · ${escapeHtml(payment.status)}</span></div>${admin && payment.status === "posted" ? `<button class="btn danger" type="button" data-reverse-payment="${escapeAttr(payment.id)}">${uiText("عكس", "ביטול", "Reverse")}</button>` : ""}</div>`).join("") || `<p class="muted">${clean("noData")}</p>`}</div></section></div>
+      <div class="modal-foot">${invoice.status === "draft" ? `<button class="btn secondary" type="button" data-edit-invoice>${clean("edit")}</button><button class="btn" type="button" data-issue-invoice>${uiText("إصدار", "הפקה", "Issue")}</button>` : ""}${admin && invoice.status !== "cancelled" ? `<button class="btn danger" type="button" data-cancel-invoice>${uiText("إلغاء الفاتورة", "ביטול חשבונית", "Cancel invoice")}</button>` : ""}</div>
+    </section></div>`;
+    root.querySelector("#closeModal").addEventListener("click", closeModal);
+    bindModalAccessibility({ focusSelector: "#closeModal" });
+    root.querySelector("[data-edit-invoice]")?.addEventListener("click", () => void openPatientInvoiceForm(invoice));
+    root.querySelector("[data-issue-invoice]")?.addEventListener("click", () => void invoiceMutation(`/api/patient-finance/invoices/${id}/issue`, id));
+    root.querySelector("[data-cancel-invoice]")?.addEventListener("click", () => confirm(uiText("إلغاء الفاتورة بحركة عكسية؟", "לבטל את החשבונית בתנועת ביטול?", "Cancel this invoice with a reversal?")) && void invoiceMutation(`/api/patient-finance/invoices/${id}/cancel`, id));
+    root.querySelectorAll("[data-reverse-payment]").forEach((button) => button.addEventListener("click", () => confirm(uiText("عكس الدفعة؟", "לבטל את התשלום?", "Reverse this payment?")) && void invoiceMutation(`/api/patient-finance/payments/${button.dataset.reversePayment}/reverse`, id)));
+    root.querySelector("#patientPaymentForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      if (form.getAttribute("aria-busy") === "true") return;
+      form.setAttribute("aria-busy", "true");
+      form.querySelector("button").disabled = true;
+      try {
+        await api("/api/patient-finance/payments", { method: "POST", body: { ...Object.fromEntries(new FormData(form)), patientId: invoice.patientId, invoiceId: invoice.id } });
+        await refreshBillingWorkspace({ renderLoading: false });
+        await openPatientInvoiceDetails(id);
+      } catch (error) {
+        form.removeAttribute("aria-busy");
+        form.querySelector("button").disabled = false;
+        root.querySelector("#paymentError").textContent = localizedError(error);
+      }
+    });
+  } catch (error) {
+    root.innerHTML = `<div class="modal"><div class="modal-card"><div class="billing-boundary" role="alert">${escapeHtml(localizedError(error))}<button class="btn secondary" type="button" id="closeModal">${clean("close")}</button></div></div></div>`;
+    root.querySelector("#closeModal").addEventListener("click", closeModal);
+  }
+}
+
+function bindBillingActions() {
+  document.querySelectorAll("[data-new-invoice]").forEach((button) => button.addEventListener("click", () => void openPatientInvoiceForm()));
+  document.querySelectorAll("[data-invoice-details]").forEach((button) => button.addEventListener("click", () => void openPatientInvoiceDetails(Number(button.dataset.invoiceDetails))));
+  document.querySelector("[data-billing-retry]")?.addEventListener("click", () => void refreshBillingWorkspace());
+}
+
 renderBilling = function () {
-  return renderPlatformAdmin();
+  return renderBillingWorkspace({ language: state.lang, workspace: state.billingWorkspace });
 }
 
 function field(name, label, value = "", type = "text", required = true, extraClass = "") {
@@ -3507,9 +3668,11 @@ function setProtectedRoute(page, options = {}) {
   const target = resolveProtectedRoute(hashForRoute(page), state.user);
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   const enteringPatients = target.page === "clients" && state.page !== "clients";
+  const enteringBilling = target.page === "billing" && state.page !== "billing";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   if (enteringPatients) state.patientWorkspace.status = "idle";
+  if (enteringBilling) state.billingWorkspace.status = "idle";
   state.mobileNavOpen = false;
   history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(target.page));
   if (render) {
@@ -3518,6 +3681,7 @@ function setProtectedRoute(page, options = {}) {
       renderApp();
       if (target.page === "calendar") void refreshAppointmentWorkspace();
       if (target.page === "clients") void refreshPatientWorkspace();
+      if (target.page === "billing") void refreshBillingWorkspace();
     }
   }
 }
@@ -3527,9 +3691,11 @@ function applyProtectedRoute(options = {}) {
   const target = resolveProtectedRoute(location.hash, state.user);
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   const enteringPatients = target.page === "clients" && state.page !== "clients";
+  const enteringBilling = target.page === "billing" && state.page !== "billing";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   if (enteringPatients) state.patientWorkspace.status = "idle";
+  if (enteringBilling) state.billingWorkspace.status = "idle";
   state.mobileNavOpen = false;
   if (target.redirect) history.replaceState({}, "", routeUrl(target.page));
   else if (replace) history.replaceState({}, "", routeUrl(target.page));
@@ -3539,6 +3705,7 @@ function applyProtectedRoute(options = {}) {
       renderApp();
       if (target.page === "calendar") void refreshAppointmentWorkspace();
       if (target.page === "clients") void refreshPatientWorkspace();
+      if (target.page === "billing") void refreshBillingWorkspace();
     }
   }
 }
@@ -3785,7 +3952,8 @@ renderLogin = function (error = "", values = {}) {
       state.patientWorkspace = { ...state.patientWorkspace, status: "idle", error: "", data: null };
       renderApp();
       if (state.page === "calendar") void refreshAppointmentWorkspace();
-      if (state.page === "clients") void refreshPatientWorkspace();
+  if (state.page === "clients") void refreshPatientWorkspace();
+  if (state.page === "billing") void refreshBillingWorkspace();
     } catch (err) {
       renderLogin(err, { identifier: body.identifier, clinicIdentifier: body.clinicIdentifier });
     }
@@ -4458,6 +4626,11 @@ renderBilling = function () {
   return `<div class="card"><p class="muted">${uiText("الفوترة التجارية تدار من صفحة مالك النظام.", "החיוב המסחרי מנוהל מעמוד בעל המערכת.")}</p></div>`;
 }
 
+// Final clinic billing renderer overrides the legacy platform-subscription placeholder above.
+renderBilling = function () {
+  return renderBillingWorkspace({ language: state.lang, workspace: state.billingWorkspace });
+}
+
 appointmentTableClean = function (rows, actions = true) {
   return appointmentTableFull(rows, actions);
 }
@@ -4591,6 +4764,7 @@ topActionI18n = function () {
   if (state.user?.platformOwner) return "";
   if (state.page === "appointments") return `<button class="btn" data-new="appointments">${uiText("موعد جديد", "תור חדש", "New appointment")}</button>`;
   if (state.page === "clients" && state.user.role !== "therapist") return `<button class="btn" data-new="clients">${uiText("مريض جديد", "מטופל חדש", "New patient")}</button>`;
+  if (state.page === "billing") return `<button class="btn" data-new-invoice>${uiText("فاتورة جديدة", "חשבונית חדשה", "New invoice")}</button>`;
   if (state.page === "consents" && state.user.role === "admin") return `<button class="btn" data-new-consent>${uiText("نموذج جديد", "תבנית חדשה", "New template")}</button>`;
   if (state.page === "feedback") return `<button class="btn" data-new-feedback>${uiText("إرسال تقييم", "שליחת משוב")}</button>`;
   if (state.page === "gifts") return `<button class="btn" data-new-gift>${uiText("كرت هدية", "כרטיס מתנה")}</button>`;

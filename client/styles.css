@@ -3271,3 +3271,44 @@ html[dir="ltr"] .patient-profile-layer { justify-items: start; }
 @media (prefers-reduced-motion: reduce) {
   .notification-spinner { animation: none; }
 }
+
+/* Sprint 2.4 patient billing */
+.billing-workspace { display: grid; gap: 16px; }
+.billing-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.billing-summary > div { display: grid; gap: 4px; }
+.billing-summary span, .invoice-totals span, .patient-balance span { color: var(--muted); font-size: 12px; }
+.billing-summary strong { font-size: 28px; }
+.billing-table-wrap { max-width: 100%; overflow-x: auto; }
+.billing-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.billing-table th, .billing-table td { padding: 12px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: middle; }
+.billing-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.billing-table td small { display: block; margin-top: 3px; color: var(--muted); }
+.billing-boundary, .billing-empty { display: grid; min-height: 180px; place-content: center; justify-items: center; gap: 12px; text-align: center; }
+.billing-mobile-list { display: none; gap: 12px; }
+.billing-mobile-list article { display: grid; gap: 10px; }
+.billing-mobile-list header { display: flex; justify-content: space-between; gap: 8px; }
+.billing-mobile-list dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.billing-mobile-list dl div { display: grid; }
+.billing-mobile-list dt { color: var(--muted); font-size: 11px; }
+.billing-mobile-list dd { margin: 0; font-weight: 700; }
+.invoice-items { display: grid; gap: 10px; }
+.invoice-item-row { display: grid; grid-template-columns: 1.2fr 1.6fr repeat(4, minmax(90px, .7fr)); gap: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.invoice-item-row legend { padding-inline: 6px; font-weight: 700; }
+.invoice-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.invoice-totals > div { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.invoice-payment-form { display: grid; grid-template-columns: 1fr 1fr 1.4fr auto; align-items: end; gap: 8px; padding: 14px; background: var(--surface); border-radius: var(--radius-sm); }
+.invoice-payment-form h4, .invoice-payment-form [role="alert"] { grid-column: 1 / -1; margin: 0; }
+.patient-financial-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.patient-balance { display: grid; text-align: end; }
+.patient-balance strong { font-size: 20px; }
+.patient-finance-invoices { display: flex; gap: 8px; margin-block: 12px; overflow-x: auto; }
+.patient-finance-invoices button { display: grid; min-width: 180px; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); text-align: start; cursor: pointer; }
+.patient-finance-invoices button span { color: var(--muted); font-size: 11px; }
+
+@media (max-width: 760px) {
+  .billing-table-wrap.card { display: none; }
+  .patient-financial-section .billing-table-wrap { display: block; }
+  .billing-mobile-list { display: grid; }
+  .invoice-item-row, .invoice-totals, .invoice-payment-form { grid-template-columns: 1fr; }
+  .invoice-payment-form h4, .invoice-payment-form [role="alert"] { grid-column: auto; }
+}

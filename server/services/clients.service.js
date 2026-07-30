@@ -23,6 +23,7 @@ import {
 import { permissions } from "../repositories/permissions.repository.js";
 import { listClientClinicalVisits } from "../repositories/clinical-visits.repository.js";
 import { expirePatientConsents, listConsentTemplates } from "../repositories/consents.repository.js";
+import { patientFinancialSnapshot } from "./patient-finance.service.js";
 
 const planCatalog = {
   starter: { name: "Starter", monthlyPrice: 49, maxUsers: 5, maxClients: 200, whatsapp: false, billing: false },
@@ -342,7 +343,7 @@ export async function getClientHistory(user, id) {
 
   const includeClinical = permissions.clients_clinical_read.includes(user.role);
   const includeFinancial = permissions.clients_financial_read.includes(user.role);
-  const [appointmentRows, crmEvents, rawFiles, consents, patientConsents, clinicalVisitRows, availableConsentTemplates] = await Promise.all([
+  const [appointmentRows, crmEvents, rawFiles, consents, patientConsents, clinicalVisitRows, availableConsentTemplates, financial] = await Promise.all([
     listClientAppointments(user, id),
     listClientCrmEvents(id, user.tenantId),
     listClientFiles(id, user.tenantId),
@@ -350,6 +351,7 @@ export async function getClientHistory(user, id) {
     listClientPatientConsents(id, user.tenantId),
     listClientClinicalVisits(user, id),
     listConsentTemplates(user.tenantId),
+    includeFinancial ? patientFinancialSnapshot(user, id) : Promise.resolve(null),
   ]);
   const files = rawFiles.map((file) => includeClinical
     ? { ...file, canDownload: true }
@@ -389,6 +391,7 @@ export async function getClientHistory(user, id) {
       clinicalVisits: clinicalVisitRows.map((row) => clinicalVisitFromRow(row, includeClinical)),
       crmEvents: visibleCrmEvents,
       timeline,
+      ...(includeFinancial ? { financial } : {}),
       indicators: {
         appointmentCount: appointments.length,
         completedCount: appointments.filter((item) => item.status === "done").length,

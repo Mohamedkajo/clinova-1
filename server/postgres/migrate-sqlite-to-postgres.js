@@ -36,6 +36,10 @@ async function main() {
     await copyPatientConsents(client);
     await copyNotifications(client);
     await copyAppointmentReminders(client);
+    await copyPatientInvoices(client);
+    await copyPatientInvoiceItems(client);
+    await copyPatientPayments(client);
+    await copyPatientLedgerEntries(client);
     await copySettings(client);
     await copyTenantDomains(client);
     await copyBillingInvoices(client);
@@ -56,7 +60,7 @@ async function main() {
 }
 
 async function clearTables(client) {
-  await client.query("TRUNCATE audit_log, sessions, user_invitations, message_logs, appointment_reminders, notifications, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users RESTART IDENTITY CASCADE");
+  await client.query("TRUNCATE audit_log, sessions, user_invitations, message_logs, patient_ledger_entries, patient_payments, patient_invoice_items, patient_invoices, appointment_reminders, notifications, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users RESTART IDENTITY CASCADE");
 }
 
 async function copyUsers(client) {
@@ -244,6 +248,77 @@ async function copyAppointmentReminders(client) {
   }
 }
 
+async function copyPatientInvoices(client) {
+  const rows = sqlite.prepare("SELECT * FROM patient_invoices ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO patient_invoices (
+        id, tenant_id, patient_id, appointment_id, invoice_number, issue_date, status,
+        subtotal_minor, discount_minor, tax_minor, total_minor, currency, created_by,
+        created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [
+        row.id, row.tenant_id, row.patient_id, row.appointment_id || null,
+        row.invoice_number, row.issue_date || null, row.status, row.subtotal_minor,
+        row.discount_minor, row.tax_minor, row.total_minor, row.currency,
+        row.created_by, row.created_at, row.updated_at,
+      ],
+    );
+  }
+}
+
+async function copyPatientInvoiceItems(client) {
+  const rows = sqlite.prepare("SELECT * FROM patient_invoice_items ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO patient_invoice_items (
+        id, tenant_id, invoice_id, service_id, description, quantity,
+        unit_price_minor, discount_minor, tax_minor, line_total_minor, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        row.id, row.tenant_id, row.invoice_id, row.service_id || null, row.description,
+        row.quantity, row.unit_price_minor, row.discount_minor, row.tax_minor,
+        row.line_total_minor, row.created_at,
+      ],
+    );
+  }
+}
+
+async function copyPatientPayments(client) {
+  const rows = sqlite.prepare("SELECT * FROM patient_payments ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO patient_payments (
+        id, tenant_id, patient_id, invoice_id, amount_minor, payment_method,
+        reference, payment_date, status, created_by, reversed_by, reversed_at,
+        created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        row.id, row.tenant_id, row.patient_id, row.invoice_id || null,
+        row.amount_minor, row.payment_method, row.reference || "", row.payment_date,
+        row.status, row.created_by, row.reversed_by || null, row.reversed_at || null,
+        row.created_at, row.updated_at,
+      ],
+    );
+  }
+}
+
+async function copyPatientLedgerEntries(client) {
+  const rows = sqlite.prepare("SELECT * FROM patient_ledger_entries ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO patient_ledger_entries (
+        id, tenant_id, patient_id, type, reference_type, reference_id,
+        debit_minor, credit_minor, posted_at, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        row.id, row.tenant_id, row.patient_id, row.type, row.reference_type,
+        row.reference_id, row.debit_minor, row.credit_minor, row.posted_at, row.created_by,
+      ],
+    );
+  }
+}
+
 async function copyBillingInvoices(client) {
   const rows = sqlite.prepare("SELECT * FROM billing_invoices ORDER BY id").all();
   for (const row of rows) {
@@ -326,7 +401,7 @@ async function copyAudit(client) {
 }
 
 async function resetSequences(client) {
-  for (const table of ["users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "notifications", "appointment_reminders", "tenant_domains", "billing_invoices", "client_files", "message_logs", "user_invitations", "audit_log"]) {
+  for (const table of ["users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "notifications", "appointment_reminders", "patient_invoices", "patient_invoice_items", "patient_payments", "patient_ledger_entries", "tenant_domains", "billing_invoices", "client_files", "message_logs", "user_invitations", "audit_log"]) {
     await client.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`);
   }
 }

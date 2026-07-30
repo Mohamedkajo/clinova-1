@@ -48,6 +48,7 @@ const rolePermissions = {
   reception: [
     "canViewAppointments",
     "canViewPatients",
+    "canViewBilling",
     "canViewSettings",
     "canViewMessages",
     "canViewConsents",

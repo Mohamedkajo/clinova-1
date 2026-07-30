@@ -44,6 +44,23 @@ function pgValues(values) {
   });
 }
 
+function postgresPrepared(queryable, sql) {
+  return {
+    all: async (...values) => (await queryable.query(pgSql(sql), pgValues(values))).rows,
+    get: async (...values) => (await queryable.query(pgSql(sql), pgValues(values))).rows[0],
+    run: async (...values) => {
+      let text = pgSql(sql);
+      const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|patient_invoices|patient_invoice_items|patient_payments|patient_ledger_entries|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|patient_consents|notifications|appointment_reminders|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
+      if (wantsId) text += " RETURNING id";
+      const result = await queryable.query(text, pgValues(values));
+      return {
+        changes: result.rowCount,
+        lastInsertRowid: result.rows[0]?.id,
+      };
+    },
+  };
+}
+
 class SqliteAdapter {
   constructor() {
     mkdirSync(dirname(config.databasePath), { recursive: true });
@@ -64,6 +81,18 @@ class SqliteAdapter {
   exec(sql) {
     return this.client.exec(sql);
   }
+
+  async transaction(callback) {
+    this.client.exec("BEGIN IMMEDIATE");
+    try {
+      const result = await callback(this);
+      this.client.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.client.exec("ROLLBACK");
+      throw error;
+    }
+  }
 }
 
 class PostgresAdapter {
@@ -72,20 +101,7 @@ class PostgresAdapter {
   }
 
   prepare(sql) {
-    return {
-      all: async (...values) => (await this.pool.query(pgSql(sql), pgValues(values))).rows,
-      get: async (...values) => (await this.pool.query(pgSql(sql), pgValues(values))).rows[0],
-      run: async (...values) => {
-        let text = pgSql(sql);
-        const wantsId = /^\s*INSERT\s+INTO\s+(tenants|tenant_domains|subscriptions|billing_invoices|users|categories|services|clients|crm_tasks|crm_events|appointments|clinical_visits|client_files|consent_templates|consent_signatures|patient_consents|notifications|appointment_reminders|feedback_requests|gift_cards|user_invitations|message_logs|audit_log)\b/i.test(text) && !/\bRETURNING\b/i.test(text);
-        if (wantsId) text += " RETURNING id";
-        const result = await this.pool.query(text, pgValues(values));
-        return {
-          changes: result.rowCount,
-          lastInsertRowid: result.rows[0]?.id,
-        };
-      },
-    };
+    return postgresPrepared(this.pool, sql);
   }
 
   async exec(sql) {
@@ -94,6 +110,25 @@ class PostgresAdapter {
 
   async close() {
     return this.pool.end();
+  }
+
+  async transaction(callback) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const scoped = {
+        prepare: (sql) => postgresPrepared(client, sql),
+        exec: (sql) => client.query(sql),
+      };
+      const result = await callback(scoped);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -427,6 +462,65 @@ async function initSqlite() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS patient_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      patient_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE RESTRICT,
+      invoice_number TEXT NOT NULL,
+      issue_date TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','issued','partially_paid','paid','cancelled')),
+      subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor >= 0),
+      discount_minor INTEGER NOT NULL DEFAULT 0 CHECK(discount_minor >= 0),
+      tax_minor INTEGER NOT NULL DEFAULT 0 CHECK(tax_minor >= 0),
+      total_minor INTEGER NOT NULL CHECK(total_minor >= 0),
+      currency TEXT NOT NULL DEFAULT 'ILS',
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS patient_invoice_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      invoice_id INTEGER NOT NULL REFERENCES patient_invoices(id) ON DELETE CASCADE,
+      service_id INTEGER REFERENCES services(id) ON DELETE RESTRICT,
+      description TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity > 0),
+      unit_price_minor INTEGER NOT NULL CHECK(unit_price_minor >= 0),
+      discount_minor INTEGER NOT NULL DEFAULT 0 CHECK(discount_minor >= 0),
+      tax_minor INTEGER NOT NULL DEFAULT 0 CHECK(tax_minor >= 0),
+      line_total_minor INTEGER NOT NULL CHECK(line_total_minor >= 0),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS patient_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      patient_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+      invoice_id INTEGER REFERENCES patient_invoices(id) ON DELETE RESTRICT,
+      amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+      payment_method TEXT NOT NULL CHECK(payment_method IN ('cash','card','bank_transfer','check','other')),
+      reference TEXT NOT NULL DEFAULT '',
+      payment_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('posted','reversed')),
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      reversed_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+      reversed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS patient_ledger_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      patient_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+      type TEXT NOT NULL CHECK(type IN ('invoice','invoice_reversal','payment','payment_reversal')),
+      reference_type TEXT NOT NULL CHECK(reference_type IN ('invoice','payment')),
+      reference_id INTEGER NOT NULL,
+      debit_minor INTEGER NOT NULL DEFAULT 0 CHECK(debit_minor >= 0),
+      credit_minor INTEGER NOT NULL DEFAULT 0 CHECK(credit_minor >= 0),
+      posted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      CHECK((debit_minor > 0 AND credit_minor = 0) OR (credit_minor > 0 AND debit_minor = 0))
+    );
     CREATE TABLE IF NOT EXISTS feedback_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
@@ -587,6 +681,16 @@ async function initSqlite() {
     ON appointment_reminders(tenant_id, appointment_id, reminder_type)
     WHERE status IN ('pending','ready')
   `);
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_invoices_tenant_number ON patient_invoices(tenant_id, invoice_number)");
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_invoices_active_appointment
+    ON patient_invoices(tenant_id, appointment_id)
+    WHERE appointment_id IS NOT NULL AND status != 'cancelled'
+  `);
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_invoices_patient ON patient_invoices(tenant_id, patient_id, created_at)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_payments_patient ON patient_payments(tenant_id, patient_id, payment_date)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_payments_invoice ON patient_payments(tenant_id, invoice_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_ledger_patient ON patient_ledger_entries(tenant_id, patient_id, posted_at, id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");

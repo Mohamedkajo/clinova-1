@@ -24,6 +24,7 @@ import { crmRoutes } from "./routes/crm.routes.js";
 import { billingRoutes } from "./routes/billing.routes.js";
 import { notificationsRoutes } from "./routes/notifications.routes.js";
 import { remindersRoutes } from "./routes/reminders.routes.js";
+import { patientFinanceRoutes } from "./routes/patient-finance.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { giftsRoutes } from "./modules/gifts/gifts.routes.js";
 import { statusRoutes } from "./modules/status/status.routes.js";
@@ -52,6 +53,7 @@ import { handleBillingRoute } from "./controllers/billing.controller.js";
 import { handleWhatsAppRoute } from "./controllers/whatsapp.controller.js";
 import { handleNotificationsRoute } from "./controllers/notifications.controller.js";
 import { handleRemindersRoute } from "./controllers/reminders.controller.js";
+import { handlePatientFinanceRoute } from "./controllers/patient-finance.controller.js";
 import { handleCatalogRoute } from "./modules/catalog/catalog.controller.js";
 import { handleGiftsRoute } from "./modules/gifts/gifts.controller.js";
 import { handleStatusRoute } from "./modules/status/status.controller.js";
@@ -82,6 +84,7 @@ const registeredRoutes = [
   ...billingRoutes,
   ...notificationsRoutes,
   ...remindersRoutes,
+  ...patientFinanceRoutes,
   ...whatsappRoutes,
   ...catalogRoutes,
   ...giftsRoutes,
@@ -234,6 +237,11 @@ async function handleApi(req, res, url) {
     }
     if (matchedRoute.module === "reminders") {
       if (await handleRemindersRoute(req, res, url)) return;
+      apiNotFound(res);
+      return;
+    }
+    if (matchedRoute.module === "patient-finance") {
+      if (await handlePatientFinanceRoute(req, res, url)) return;
       apiNotFound(res);
       return;
     }

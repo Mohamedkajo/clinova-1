@@ -293,6 +293,69 @@ CREATE TABLE IF NOT EXISTS appointment_reminders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS patient_invoices (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  patient_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  appointment_id BIGINT REFERENCES appointments(id) ON DELETE RESTRICT,
+  invoice_number TEXT NOT NULL,
+  issue_date DATE,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','issued','partially_paid','paid','cancelled')),
+  subtotal_minor BIGINT NOT NULL CHECK (subtotal_minor >= 0),
+  discount_minor BIGINT NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+  tax_minor BIGINT NOT NULL DEFAULT 0 CHECK (tax_minor >= 0),
+  total_minor BIGINT NOT NULL CHECK (total_minor >= 0),
+  currency TEXT NOT NULL DEFAULT 'ILS',
+  created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS patient_invoice_items (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  invoice_id BIGINT NOT NULL REFERENCES patient_invoices(id) ON DELETE CASCADE,
+  service_id BIGINT REFERENCES services(id) ON DELETE RESTRICT,
+  description TEXT NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price_minor BIGINT NOT NULL CHECK (unit_price_minor >= 0),
+  discount_minor BIGINT NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+  tax_minor BIGINT NOT NULL DEFAULT 0 CHECK (tax_minor >= 0),
+  line_total_minor BIGINT NOT NULL CHECK (line_total_minor >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS patient_payments (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  patient_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  invoice_id BIGINT REFERENCES patient_invoices(id) ON DELETE RESTRICT,
+  amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('cash','card','bank_transfer','check','other')),
+  reference TEXT NOT NULL DEFAULT '',
+  payment_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('posted','reversed')),
+  created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  reversed_by BIGINT REFERENCES users(id) ON DELETE RESTRICT,
+  reversed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS patient_ledger_entries (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  patient_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  type TEXT NOT NULL CHECK (type IN ('invoice','invoice_reversal','payment','payment_reversal')),
+  reference_type TEXT NOT NULL CHECK (reference_type IN ('invoice','payment')),
+  reference_id BIGINT NOT NULL,
+  debit_minor BIGINT NOT NULL DEFAULT 0 CHECK (debit_minor >= 0),
+  credit_minor BIGINT NOT NULL DEFAULT 0 CHECK (credit_minor >= 0),
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  CHECK ((debit_minor > 0 AND credit_minor = 0) OR (credit_minor > 0 AND debit_minor = 0))
+);
+
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS stored_name TEXT DEFAULT '';
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'clinical';
 ALTER TABLE client_files ADD COLUMN IF NOT EXISTS appointment_id BIGINT REFERENCES appointments(id) ON DELETE SET NULL;
@@ -325,6 +388,19 @@ CREATE INDEX IF NOT EXISTS idx_reminders_appointment
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_active_unique
   ON appointment_reminders(tenant_id, appointment_id, reminder_type)
   WHERE status IN ('pending','ready');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_invoices_tenant_number
+  ON patient_invoices(tenant_id, invoice_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_invoices_active_appointment
+  ON patient_invoices(tenant_id, appointment_id)
+  WHERE appointment_id IS NOT NULL AND status != 'cancelled';
+CREATE INDEX IF NOT EXISTS idx_patient_invoices_patient
+  ON patient_invoices(tenant_id, patient_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_patient_payments_patient
+  ON patient_payments(tenant_id, patient_id, payment_date);
+CREATE INDEX IF NOT EXISTS idx_patient_payments_invoice
+  ON patient_payments(tenant_id, invoice_id);
+CREATE INDEX IF NOT EXISTS idx_patient_ledger_patient
+  ON patient_ledger_entries(tenant_id, patient_id, posted_at, id);
 
 CREATE TABLE IF NOT EXISTS feedback_requests (
   id BIGSERIAL PRIMARY KEY,
