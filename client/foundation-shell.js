@@ -49,6 +49,7 @@ const rolePermissions = {
     "canViewAppointments",
     "canViewPatients",
     "canViewBilling",
+    "canViewReports",
     "canViewSettings",
     "canViewMessages",
     "canViewConsents",
@@ -58,6 +59,7 @@ const rolePermissions = {
   therapist: [
     "canViewAppointments",
     "canViewPatients",
+    "canViewReports",
     "canViewSettings",
     "canViewConsents",
   ],

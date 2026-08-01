@@ -14,6 +14,7 @@ import { renderBookingWorkflow, selectedServiceDuration } from "./booking-workfl
 import { renderClinicalVisit } from "./clinical-visit.js";
 import { notificationTarget, renderNotificationCenter } from "./notification-center.js";
 import { billingStatus, renderBillingWorkspace } from "./patient-billing.js";
+import { currentMonthRange, renderReportsWorkspace } from "./reports-workspace.js";
 import {
   directionForLanguage,
   hashForRoute,
@@ -49,6 +50,13 @@ const state = {
     status: "idle",
     error: "",
     items: [],
+  },
+  reportWorkspace: {
+    status: "idle",
+    error: "",
+    data: null,
+    filters: { ...currentMonthRange(), therapistId: "", serviceId: "", appointmentStatus: "", paymentStatus: "" },
+    section: "overview",
   },
   quickSearch: "",
   quickResults: null,
@@ -110,8 +118,8 @@ const labels = {
 
 const navByRole = {
   admin: ["dashboard", "calendar", "appointments", "clients", "crm", "whatsapp", "consents", "feedback", "gifts", "categories", "services", "users", "reports", "audit", "settings"],
-  reception: ["calendar", "appointments", "clients", "crm", "consents", "feedback", "gifts", "settings"],
-  therapist: ["calendar", "appointments", "clients", "crm", "consents", "settings"],
+  reception: ["calendar", "appointments", "clients", "crm", "consents", "feedback", "gifts", "reports", "settings"],
+  therapist: ["calendar", "appointments", "clients", "crm", "consents", "reports", "settings"],
 };
 
 const i18n = {
@@ -612,6 +620,31 @@ async function refreshBillingWorkspace({ renderLoading = true } = {}) {
   if (state.page === "billing") renderApp();
 }
 
+function reportQuery(filters = state.reportWorkspace.filters) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters || {})) {
+    if (value !== "" && value !== null && value !== undefined) query.set(key, String(value));
+  }
+  return query.toString();
+}
+
+async function refreshReportWorkspace({ renderLoading = true } = {}) {
+  if (!state.user || state.user.platformOwner || state.page !== "reports") return;
+  state.reportWorkspace.status = "loading";
+  state.reportWorkspace.error = "";
+  if (renderLoading) renderApp();
+  try {
+    const data = await api(`/api/reports?${reportQuery()}`);
+    state.reportWorkspace.data = data;
+    state.reportWorkspace.filters = { ...state.reportWorkspace.filters, ...data.filters };
+    state.reportWorkspace.status = "ready";
+  } catch (error) {
+    state.reportWorkspace.status = "error";
+    state.reportWorkspace.error = localizedError(error);
+  }
+  if (state.page === "reports") renderApp();
+}
+
 function closeAppointmentDrawer() {
   closeModal();
 }
@@ -1081,6 +1114,33 @@ function bindPageActions() {
     state.patientWorkspace.filters.page = Number(button.dataset.patientPage || 1);
     void refreshPatientWorkspace();
   }));
+  const reportFilters = document.querySelector("[data-report-filters]");
+  reportFilters?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (reportFilters.getAttribute("aria-busy") === "true") return;
+    state.reportWorkspace.filters = { ...Object.fromEntries(new FormData(reportFilters)) };
+    reportFilters.setAttribute("aria-busy", "true");
+    reportFilters.querySelectorAll("button, input, select").forEach((control) => { control.disabled = true; });
+    void refreshReportWorkspace();
+  });
+  document.querySelector("[data-report-reset]")?.addEventListener("click", () => {
+    state.reportWorkspace.filters = { ...currentMonthRange(), therapistId: "", serviceId: "", appointmentStatus: "", paymentStatus: "" };
+    void refreshReportWorkspace();
+  });
+  document.querySelector("[data-report-retry]")?.addEventListener("click", () => void refreshReportWorkspace());
+  document.querySelectorAll("[data-report-section]").forEach((button) => button.addEventListener("click", () => {
+    state.reportWorkspace.section = button.dataset.reportSection || "overview";
+    renderApp();
+  }));
+  document.querySelector("[data-report-export]")?.addEventListener("click", () => {
+    const link = document.createElement("a");
+    link.href = `/api/reports/export.csv?${reportQuery()}`;
+    link.download = "clinova-reports.csv";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  });
+  document.querySelector("[data-report-print]")?.addEventListener("click", () => window.print());
   document.querySelectorAll("[data-platform-tenant-form]").forEach((form) => form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const tenantId = form.dataset.platformTenantForm;
@@ -1177,6 +1237,7 @@ async function boot() {
   if (state.page === "calendar") void refreshAppointmentWorkspace();
   if (state.page === "clients") void refreshPatientWorkspace();
   if (state.page === "billing") void refreshBillingWorkspace();
+  if (state.page === "reports") void refreshReportWorkspace();
 }
 
 function renderLoginLegacy(error = "") {
@@ -3669,10 +3730,12 @@ function setProtectedRoute(page, options = {}) {
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   const enteringPatients = target.page === "clients" && state.page !== "clients";
   const enteringBilling = target.page === "billing" && state.page !== "billing";
+  const enteringReports = target.page === "reports" && state.page !== "reports";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   if (enteringPatients) state.patientWorkspace.status = "idle";
   if (enteringBilling) state.billingWorkspace.status = "idle";
+  if (enteringReports) state.reportWorkspace.status = "idle";
   state.mobileNavOpen = false;
   history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(target.page));
   if (render) {
@@ -3682,6 +3745,7 @@ function setProtectedRoute(page, options = {}) {
       if (target.page === "calendar") void refreshAppointmentWorkspace();
       if (target.page === "clients") void refreshPatientWorkspace();
       if (target.page === "billing") void refreshBillingWorkspace();
+      if (target.page === "reports") void refreshReportWorkspace();
     }
   }
 }
@@ -3692,10 +3756,12 @@ function applyProtectedRoute(options = {}) {
   const enteringCalendar = target.page === "calendar" && state.page !== "calendar";
   const enteringPatients = target.page === "clients" && state.page !== "clients";
   const enteringBilling = target.page === "billing" && state.page !== "billing";
+  const enteringReports = target.page === "reports" && state.page !== "reports";
   state.page = target.page;
   if (enteringCalendar) state.appointmentWorkspace.status = "idle";
   if (enteringPatients) state.patientWorkspace.status = "idle";
   if (enteringBilling) state.billingWorkspace.status = "idle";
+  if (enteringReports) state.reportWorkspace.status = "idle";
   state.mobileNavOpen = false;
   if (target.redirect) history.replaceState({}, "", routeUrl(target.page));
   else if (replace) history.replaceState({}, "", routeUrl(target.page));
@@ -3706,6 +3772,7 @@ function applyProtectedRoute(options = {}) {
       if (target.page === "calendar") void refreshAppointmentWorkspace();
       if (target.page === "clients") void refreshPatientWorkspace();
       if (target.page === "billing") void refreshBillingWorkspace();
+      if (target.page === "reports") void refreshReportWorkspace();
     }
   }
 }
@@ -3797,6 +3864,7 @@ async function logoutFromFoundation() {
     state.data = {};
     state.appointmentWorkspace = { status: "idle", error: "", queue: [], filters: { therapistId: "", status: "", serviceId: "" } };
     state.patientWorkspace = { status: "idle", error: "", data: null, filters: { ...emptyPatientFilters } };
+    state.reportWorkspace = { status: "idle", error: "", data: null, filters: { ...currentMonthRange(), therapistId: "", serviceId: "", appointmentStatus: "", paymentStatus: "" }, section: "overview" };
     state.notificationCenter = { status: "idle", error: "", items: [], unreadCount: 0, open: false, actionPending: false };
     setProtectedRoute("login", { replace: true });
   }
@@ -3950,10 +4018,12 @@ renderLogin = function (error = "", values = {}) {
       await loadData();
       state.appointmentWorkspace = { ...state.appointmentWorkspace, status: "idle", error: "", queue: [] };
       state.patientWorkspace = { ...state.patientWorkspace, status: "idle", error: "", data: null };
+      state.reportWorkspace.status = "idle";
       renderApp();
       if (state.page === "calendar") void refreshAppointmentWorkspace();
   if (state.page === "clients") void refreshPatientWorkspace();
   if (state.page === "billing") void refreshBillingWorkspace();
+  if (state.page === "reports") void refreshReportWorkspace();
     } catch (err) {
       renderLogin(err, { identifier: body.identifier, clinicIdentifier: body.clinicIdentifier });
     }
@@ -4989,6 +5059,11 @@ renderConsents = function () {
       </section>
     </div>`;
 }
+
+// The operational reporting workspace replaces legacy client-side calculations.
+renderReports = function () {
+  return renderReportsWorkspace({ language: state.lang, workspace: state.reportWorkspace });
+};
 
 function renderFoundationLoading() {
   setDocumentLanguage();

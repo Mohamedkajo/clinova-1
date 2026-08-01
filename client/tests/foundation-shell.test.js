@@ -44,11 +44,12 @@ test("permission-based navigation follows the accepted clinic role model", () =>
   assert.equal(receptionPages.includes("dashboard"), false);
   assert.equal(receptionPages.includes("appointments"), true);
   assert.equal(receptionPages.includes("clients"), true);
-  assert.equal(receptionPages.includes("reports"), false);
+  assert.equal(receptionPages.includes("reports"), true);
   assert.equal(receptionPages.includes("feedback"), true);
 
   assert.equal(therapistPages.includes("appointments"), true);
   assert.equal(therapistPages.includes("consents"), true);
+  assert.equal(therapistPages.includes("reports"), true);
   assert.equal(therapistPages.includes("feedback"), false);
   assert.equal(therapistPages.includes("users"), false);
 

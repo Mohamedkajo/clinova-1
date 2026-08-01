@@ -2,7 +2,7 @@ export const permissions = {
   users: ["admin"],
   categories: ["admin"],
   services: ["admin"],
-  reports: ["admin"],
+  reports: ["admin", "reception", "therapist"],
   audit: ["admin"],
   settings_write: ["admin"],
   notifications: ["admin", "reception", "therapist"],

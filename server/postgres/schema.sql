@@ -401,6 +401,18 @@ CREATE INDEX IF NOT EXISTS idx_patient_payments_invoice
   ON patient_payments(tenant_id, invoice_id);
 CREATE INDEX IF NOT EXISTS idx_patient_ledger_patient
   ON patient_ledger_entries(tenant_id, patient_id, posted_at, id);
+CREATE INDEX IF NOT EXISTS idx_reports_appointments
+  ON appointments(tenant_id, date, active, therapist_id, service_id, status, payment_status);
+CREATE INDEX IF NOT EXISTS idx_reports_clients
+  ON clients(tenant_id, created_at, active, therapist_id);
+CREATE INDEX IF NOT EXISTS idx_reports_clinical_visits
+  ON clinical_visits(tenant_id, visit_date, therapist_id, service_id, status);
+CREATE INDEX IF NOT EXISTS idx_reports_consents
+  ON patient_consents(tenant_id, created_at, status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_reports_ledger
+  ON patient_ledger_entries(tenant_id, posted_at, type);
+CREATE INDEX IF NOT EXISTS idx_reports_follow_up
+  ON crm_tasks(tenant_id, type, status, due_date, assigned_to);
 
 CREATE TABLE IF NOT EXISTS feedback_requests (
   id BIGSERIAL PRIMARY KEY,

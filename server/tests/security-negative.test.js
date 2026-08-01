@@ -70,7 +70,7 @@ test("clinic and platform roles remain separated", async () => {
 
   const { client: reception } = await loginAs(clinicServer.baseUrl, "reception");
   assert.equal((await reception.get("/api/audit")).status, 403);
-  assert.equal((await reception.get("/api/reports")).status, 403);
+  assert.equal((await reception.get("/api/reports")).status, 200);
   assert.equal((await reception.delete("/api/services/1")).status, 403);
   assert.equal((await reception.delete("/api/users/1")).status, 403);
   assert.equal((await reception.post("/api/invitations", {

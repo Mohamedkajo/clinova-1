@@ -691,6 +691,12 @@ async function initSqlite() {
   await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_payments_patient ON patient_payments(tenant_id, patient_id, payment_date)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_payments_invoice ON patient_payments(tenant_id, invoice_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_patient_ledger_patient ON patient_ledger_entries(tenant_id, patient_id, posted_at, id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_appointments ON appointments(tenant_id, date, active, therapist_id, service_id, status, payment_status)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_clients ON clients(tenant_id, created_at, active, therapist_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_clinical_visits ON clinical_visits(tenant_id, visit_date, therapist_id, service_id, status)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_consents ON patient_consents(tenant_id, created_at, status, expires_at)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_ledger ON patient_ledger_entries(tenant_id, posted_at, type)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_follow_up ON crm_tasks(tenant_id, type, status, due_date, assigned_to)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");
