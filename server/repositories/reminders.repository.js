@@ -126,6 +126,7 @@ export async function markDueRemindersReady(tenantId, now) {
 export async function readyReminders(tenantId) {
   return await db.prepare(`${reminderSelect}
     WHERE r.tenant_id = ? AND r.status = 'ready'
+      AND a.active = 1 AND a.status = 'pending'
     ORDER BY r.scheduled_for, r.id
   `).all(tenantId);
 }
@@ -136,7 +137,11 @@ export async function markReminderSimulatedSent(id, tenantId) {
     SET status = 'sent', dispatched_at = CURRENT_TIMESTAMP,
         last_error = '', updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND tenant_id = ? AND status = 'ready'
-  `).run(id, tenantId);
+      AND appointment_id IN (
+        SELECT id FROM appointments
+        WHERE tenant_id = ? AND active = 1 AND status = 'pending'
+      )
+  `).run(id, tenantId, tenantId);
   return result.changes;
 }
 

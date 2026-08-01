@@ -28,6 +28,11 @@ export const config = {
   databaseSsl: String(process.env.DATABASE_SSL || "").toLowerCase() === "true",
   databaseSslRejectUnauthorized: String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || "true").toLowerCase() !== "false",
   databaseConnectionTimeoutMs: Math.max(1000, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 10000)),
+  worker: {
+    pollIntervalMs: Math.max(250, Number(process.env.WORKER_POLL_INTERVAL_MS || 5000)),
+    staleAfterMs: Math.max(5000, Number(process.env.WORKER_STALE_AFTER_MS || 120000)),
+    retryBaseMs: Math.max(250, Number(process.env.WORKER_RETRY_BASE_MS || 5000)),
+  },
   sessionSecret: process.env.SESSION_SECRET || "dev-only-change-me",
   cookieSecure: String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true",
   trustedProxyIps: String(process.env.TRUSTED_PROXY_IPS || "")

@@ -226,6 +226,23 @@ export async function simulateReminderDispatch(user) {
   return { status: 200, body: { simulated: sent.length, reminderIds: sent } };
 }
 
+export async function processTenantReminderDispatch({ tenantId }) {
+  const now = configuredNow().toISOString();
+  await markDueRemindersReady(tenantId, now);
+  const ready = await readyReminders(tenantId);
+  let dispatched = 0;
+  for (const reminder of ready) {
+    if (!await markReminderSimulatedSent(reminder.id, tenantId)) continue;
+    await auditReminder(null, "worker_dispatch", reminder.id, tenantId, {
+      appointmentId: reminder.appointmentId,
+      channel: reminder.channel,
+      mode: "local",
+    });
+    dispatched += 1;
+  }
+  return dispatched;
+}
+
 export function hasReminderSettingChanges(body) {
   return [
     "appointmentRemindersEnabled",

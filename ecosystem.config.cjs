@@ -19,6 +19,23 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss"
     },
     {
+      name: "clinova-worker",
+      script: "server/worker.js",
+      cwd: __dirname,
+      instances: 1,
+      exec_mode: "fork",
+      watch: false,
+      autorestart: true,
+      kill_timeout: 10000,
+      max_memory_restart: "200M",
+      env: {
+        NODE_ENV: "production"
+      },
+      error_file: "./logs/pm2-worker-error.log",
+      out_file: "./logs/pm2-worker-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss"
+    },
+    {
       name: "clinova-backup",
       script: "server/backup-scheduler.js",
       cwd: __dirname,

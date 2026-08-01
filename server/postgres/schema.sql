@@ -10,6 +10,37 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  description TEXT NOT NULL DEFAULT '',
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS background_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('prepare_reminders','dispatch_reminders','expire_consents')),
+  dedupe_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','processing','completed','failed')),
+  payload TEXT NOT NULL DEFAULT '{}',
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts BETWEEN 1 AND 10),
+  run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  locked_at TIMESTAMPTZ,
+  locked_by TEXT,
+  last_error TEXT NOT NULL DEFAULT '',
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS worker_heartbeats (
+  worker_id TEXT PRIMARY KEY,
+  started_at TIMESTAMPTZ NOT NULL,
+  heartbeat_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
@@ -57,6 +88,11 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
 INSERT INTO tenants (id, name, slug, status, plan, billing_email)
 VALUES (1, 'Clinova Demo Clinic', 'demo', 'trial', 'starter', '')
 ON CONFLICT (slug) DO NOTHING;
+SELECT setval(
+  pg_get_serial_sequence('tenants', 'id'),
+  GREATEST(COALESCE((SELECT MAX(id) FROM tenants), 1), 1),
+  true
+);
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
@@ -413,6 +449,12 @@ CREATE INDEX IF NOT EXISTS idx_reports_ledger
   ON patient_ledger_entries(tenant_id, posted_at, type);
 CREATE INDEX IF NOT EXISTS idx_reports_follow_up
   ON crm_tasks(tenant_id, type, status, due_date, assigned_to);
+CREATE INDEX IF NOT EXISTS idx_jobs_claim
+  ON background_jobs(status, run_at, id);
+CREATE INDEX IF NOT EXISTS idx_jobs_tenant_status
+  ON background_jobs(tenant_id, status, run_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe
+  ON background_jobs(tenant_id, dedupe_key);
 
 CREATE TABLE IF NOT EXISTS feedback_requests (
   id BIGSERIAL PRIMARY KEY,
@@ -555,13 +597,16 @@ CREATE INDEX IF NOT EXISTS idx_services_tenant ON services(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_clients_active ON clients(active);
 CREATE INDEX IF NOT EXISTS idx_clients_tenant ON clients(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_clients_tenant_stage ON clients(tenant_id, stage);
+CREATE INDEX IF NOT EXISTS idx_clients_tenant_active_updated ON clients(tenant_id, active, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_crm_tasks_tenant_status ON crm_tasks(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_crm_tasks_client ON crm_tasks(client_id);
 CREATE INDEX IF NOT EXISTS idx_crm_events_tenant ON crm_events(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_crm_events_tenant_client ON crm_events(tenant_id, client_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_appointments_active ON appointments(active);
 CREATE INDEX IF NOT EXISTS idx_appointments_tenant ON appointments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(date);
 CREATE INDEX IF NOT EXISTS idx_appointments_therapist_date ON appointments(therapist_id, date);
+CREATE INDEX IF NOT EXISTS idx_appointments_tenant_client_date ON appointments(tenant_id, client_id, active, date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_visits_tenant_appointment ON clinical_visits(tenant_id, appointment_id);
 CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_client_date ON clinical_visits(tenant_id, client_id, visit_date);
 CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_therapist ON clinical_visits(tenant_id, therapist_id);

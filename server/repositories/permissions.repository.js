@@ -4,6 +4,7 @@ export const permissions = {
   services: ["admin"],
   reports: ["admin", "reception", "therapist"],
   audit: ["admin"],
+  operations_readiness: ["admin"],
   settings_write: ["admin"],
   notifications: ["admin", "reception", "therapist"],
   reminders_manage: ["admin", "reception"],

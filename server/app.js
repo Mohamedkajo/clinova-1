@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { config } from "./config.js";
-import { assertProductionPlatformOwner } from "./db.js";
+import { assertProductionPlatformOwner, closeDatabase } from "./db.js";
 import { json } from "./shared/http/json-response.js";
 import { serveStatic } from "./shared/http/static-server.js";
 import { apiNotFound } from "./shared/http/api-not-found.js";
@@ -292,3 +292,24 @@ await assertProductionPlatformOwner();
 server.listen(config.port, config.host, () => {
   console.log(`Clinic system running on http://${config.host}:${config.port}`);
 });
+
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("server_shutdown", { signal });
+  const forceTimer = setTimeout(() => process.exit(1), 10_000);
+  forceTimer.unref?.();
+  server.close(async (error) => {
+    try {
+      await closeDatabase();
+      clearTimeout(forceTimer);
+      process.exit(error ? 1 : 0);
+    } catch {
+      process.exit(1);
+    }
+  });
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

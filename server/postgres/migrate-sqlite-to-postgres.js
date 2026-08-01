@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import pg from "pg";
 import { config } from "../config.js";
+import { currentSchemaVersion } from "../schema-version.js";
 
 const { Pool } = pg;
 
@@ -25,11 +26,15 @@ async function main() {
     await client.query(schema);
 
     await clearTables(client);
+    await copyTenants(client);
+    await copySubscriptions(client);
     await copyUsers(client);
     await copyCategories(client);
     await copyServices(client);
     await copyClients(client);
+    await copyCrmTasks(client);
     await copyAppointments(client);
+    await copyCrmEvents(client);
     await copyClinicalVisits(client);
     await copyConsentTemplates(client);
     await copyConsentSignatures(client);
@@ -44,8 +49,17 @@ async function main() {
     await copyTenantDomains(client);
     await copyBillingInvoices(client);
     await copyClientFiles(client);
+    await copyFeedbackRequests(client);
+    await copyGiftCards(client);
+    await copyMessageLogs(client);
+    await copyUserInvitations(client);
     await copyAudit(client);
     await resetSequences(client);
+    await client.query(`
+      INSERT INTO schema_migrations (version, description)
+      VALUES ($1, $2)
+      ON CONFLICT (version) DO NOTHING
+    `, [currentSchemaVersion, "Sprint 2.6 production readiness"]);
 
     await client.query("COMMIT");
     console.log("SQLite data migrated to PostgreSQL successfully.");
@@ -60,7 +74,40 @@ async function main() {
 }
 
 async function clearTables(client) {
-  await client.query("TRUNCATE audit_log, sessions, user_invitations, message_logs, patient_ledger_entries, patient_payments, patient_invoice_items, patient_invoices, appointment_reminders, notifications, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users RESTART IDENTITY CASCADE");
+  await client.query("TRUNCATE worker_heartbeats, audit_log, sessions, user_invitations, message_logs, gift_cards, feedback_requests, patient_ledger_entries, patient_payments, patient_invoice_items, patient_invoices, appointment_reminders, notifications, patient_consents, consent_signatures, consent_templates, client_files, clinical_visits, clinic_settings, billing_invoices, tenant_domains, appointments, crm_events, crm_tasks, clients, services, categories, users, subscriptions, tenants RESTART IDENTITY CASCADE");
+}
+
+async function copyTenants(client) {
+  const rows = sqlite.prepare("SELECT * FROM tenants ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO tenants (
+        id, name, slug, status, plan, billing_email, trial_ends_at, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        row.id, row.name, row.slug, row.status, row.plan || "starter",
+        row.billing_email || "", row.trial_ends_at || null, row.created_at, row.updated_at,
+      ],
+    );
+  }
+}
+
+async function copySubscriptions(client) {
+  const rows = sqlite.prepare("SELECT * FROM subscriptions ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO subscriptions (
+        id, tenant_id, provider, provider_customer_id, provider_subscription_id,
+        status, plan, billing_day, auto_billing_enabled, current_period_end, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [
+        row.id, row.tenant_id, row.provider || "manual", row.provider_customer_id || "",
+        row.provider_subscription_id || "", row.status || "trial", row.plan || "starter",
+        row.billing_day || 1, Number(row.auto_billing_enabled || 0), row.current_period_end || null,
+        row.created_at, row.updated_at,
+      ],
+    );
+  }
 }
 
 async function copyUsers(client) {
@@ -106,6 +153,23 @@ async function copyClients(client) {
   }
 }
 
+async function copyCrmTasks(client) {
+  const rows = sqlite.prepare("SELECT * FROM crm_tasks ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO crm_tasks (
+        id, tenant_id, client_id, assigned_to, type, title, due_date, status,
+        priority, notes, completed_at, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        row.id, row.tenant_id, row.client_id, row.assigned_to || null, row.type || "follow_up",
+        row.title, row.due_date || null, row.status || "open", row.priority || "normal",
+        row.notes || "", row.completed_at || null, row.created_at, row.updated_at,
+      ],
+    );
+  }
+}
+
 async function copyAppointments(client) {
   const rows = sqlite.prepare("SELECT * FROM appointments ORDER BY id").all();
   for (const row of rows) {
@@ -128,6 +192,21 @@ async function copyAppointments(client) {
         row.created_at,
         row.updated_at,
       ]
+    );
+  }
+}
+
+async function copyCrmEvents(client) {
+  const rows = sqlite.prepare("SELECT * FROM crm_events ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO crm_events (
+        id, tenant_id, client_id, user_id, appointment_id, type, description, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        row.id, row.tenant_id, row.client_id || null, row.user_id || null,
+        row.appointment_id || null, row.type, row.description, row.created_at,
+      ],
     );
   }
 }
@@ -389,6 +468,70 @@ async function copyClientFiles(client) {
   }
 }
 
+async function copyFeedbackRequests(client) {
+  const rows = sqlite.prepare("SELECT * FROM feedback_requests ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO feedback_requests (
+        id, tenant_id, appointment_id, token, rating, comment, status, sent_at, submitted_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        row.id, row.tenant_id, row.appointment_id, row.token, row.rating || null,
+        row.comment || "", row.status || "sent", row.sent_at, row.submitted_at || null,
+      ],
+    );
+  }
+}
+
+async function copyGiftCards(client) {
+  const rows = sqlite.prepare("SELECT * FROM gift_cards ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO gift_cards (
+        id, tenant_id, code, from_client_id, to_client_id, service_id, sessions,
+        message, status, created_at, redeemed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        row.id, row.tenant_id, row.code, row.from_client_id || null, row.to_client_id || null,
+        row.service_id || null, row.sessions || 1, row.message || "", row.status || "active",
+        row.created_at, row.redeemed_at || null,
+      ],
+    );
+  }
+}
+
+async function copyMessageLogs(client) {
+  const rows = sqlite.prepare("SELECT * FROM message_logs ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO message_logs (
+        id, tenant_id, user_id, channel, entity, entity_id, recipient, message,
+        status, provider_message_id, fallback_url, error, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        row.id, row.tenant_id, row.user_id || null, row.channel || "whatsapp", row.entity,
+        row.entity_id || null, row.recipient, row.message, row.status,
+        row.provider_message_id || "", row.fallback_url || "", row.error || "", row.created_at,
+      ],
+    );
+  }
+}
+
+async function copyUserInvitations(client) {
+  const rows = sqlite.prepare("SELECT * FROM user_invitations ORDER BY id").all();
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO user_invitations (
+        id, tenant_id, email, name, role, token, invited_by, expires_at, accepted_at, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        row.id, row.tenant_id, row.email, row.name, row.role, row.token,
+        row.invited_by || null, row.expires_at, row.accepted_at || null, row.created_at,
+      ],
+    );
+  }
+}
+
 async function copyAudit(client) {
   const rows = sqlite.prepare("SELECT * FROM audit_log ORDER BY id").all();
   for (const row of rows) {
@@ -401,7 +544,7 @@ async function copyAudit(client) {
 }
 
 async function resetSequences(client) {
-  for (const table of ["users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "notifications", "appointment_reminders", "patient_invoices", "patient_invoice_items", "patient_payments", "patient_ledger_entries", "tenant_domains", "billing_invoices", "client_files", "message_logs", "user_invitations", "audit_log"]) {
+  for (const table of ["tenants", "subscriptions", "users", "categories", "services", "clients", "crm_tasks", "crm_events", "appointments", "clinical_visits", "consent_templates", "consent_signatures", "patient_consents", "notifications", "appointment_reminders", "patient_invoices", "patient_invoice_items", "patient_payments", "patient_ledger_entries", "tenant_domains", "billing_invoices", "client_files", "feedback_requests", "gift_cards", "message_logs", "user_invitations", "audit_log"]) {
     await client.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`);
   }
 }

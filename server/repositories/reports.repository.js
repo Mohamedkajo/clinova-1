@@ -50,10 +50,10 @@ function financialWhere(tenantId, filters, { includeFrom = true } = {}) {
   const clauses = ["l.tenant_id = ?"];
   const values = [tenantId];
   if (includeFrom) {
-    clauses.push("SUBSTR(l.posted_at, 1, 10) BETWEEN ? AND ?");
+    clauses.push("SUBSTR(CAST(l.posted_at AS TEXT), 1, 10) BETWEEN ? AND ?");
     values.push(filters.from, filters.to);
   } else {
-    clauses.push("SUBSTR(l.posted_at, 1, 10) <= ?");
+    clauses.push("SUBSTR(CAST(l.posted_at AS TEXT), 1, 10) <= ?");
     values.push(filters.to);
   }
   if (filters.therapistId) {
@@ -121,10 +121,10 @@ export async function appointmentReport(tenantId, filters, user) {
       COALESCE(SUM(CASE WHEN a.status = 'done' THEN 1 ELSE 0 END), 0) AS completed,
       COALESCE(SUM(CASE WHEN a.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
       FROM appointments a WHERE ${where.sql} GROUP BY a.date ORDER BY a.date`).all(...where.values),
-    db.prepare(`SELECT SUBSTR(a.date, 1, 7) AS period, COUNT(*) AS total,
+    db.prepare(`SELECT SUBSTR(CAST(a.date AS TEXT), 1, 7) AS period, COUNT(*) AS total,
       COALESCE(SUM(CASE WHEN a.status = 'done' THEN 1 ELSE 0 END), 0) AS completed,
       COALESCE(SUM(CASE WHEN a.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
-      FROM appointments a WHERE ${where.sql} GROUP BY SUBSTR(a.date, 1, 7) ORDER BY period`).all(...where.values),
+      FROM appointments a WHERE ${where.sql} GROUP BY SUBSTR(CAST(a.date AS TEXT), 1, 7) ORDER BY period`).all(...where.values),
   ];
   const [summaryRow, byTherapist, byService, dailyTrend, monthlyTrend] = await Promise.all(queries);
   const summary = numbers(summaryRow);
@@ -146,7 +146,7 @@ export async function patientReport(tenantId, filters) {
   const assignedValues = filters.therapistId ? [filters.therapistId] : [];
   const queries = [
     db.prepare(`SELECT COUNT(*) AS total FROM clients c
-      WHERE c.tenant_id = ? AND c.active = 1 AND SUBSTR(c.created_at, 1, 10) BETWEEN ? AND ?${assignedFilter}`)
+      WHERE c.tenant_id = ? AND c.active = 1 AND SUBSTR(CAST(c.created_at AS TEXT), 1, 10) BETWEEN ? AND ?${assignedFilter}`)
       .get(tenantId, filters.from, filters.to, ...assignedValues),
     db.prepare(`SELECT COUNT(DISTINCT a.client_id) AS total FROM appointments a
       WHERE ${activeWhere.sql} AND a.status != 'cancelled'`).get(...activeWhere.values),
@@ -158,12 +158,12 @@ export async function patientReport(tenantId, filters) {
       .get(...activeWhere.values, filters.from),
     db.prepare(`SELECT COUNT(DISTINCT t.client_id) AS total FROM crm_tasks t
       WHERE t.tenant_id = ? AND t.type = 'follow_up' AND t.status = 'open'
-        AND SUBSTR(COALESCE(t.due_date, t.created_at), 1, 10) <= ?${filters.therapistId ? " AND t.assigned_to = ?" : ""}`)
+        AND SUBSTR(CAST(COALESCE(t.due_date, CAST(t.created_at AS TEXT)) AS TEXT), 1, 10) <= ?${filters.therapistId ? " AND t.assigned_to = ?" : ""}`)
       .get(tenantId, filters.to, ...assignedValues),
     db.prepare(`SELECT COUNT(DISTINCT pc.client_id) AS total FROM patient_consents pc
       WHERE pc.tenant_id = ? AND pc.status = 'pending'
-        AND (pc.expires_at IS NULL OR SUBSTR(pc.expires_at, 1, 10) >= ?)
-        AND SUBSTR(pc.created_at, 1, 10) BETWEEN ? AND ?`)
+        AND (pc.expires_at IS NULL OR SUBSTR(CAST(pc.expires_at AS TEXT), 1, 10) >= ?)
+        AND SUBSTR(CAST(pc.created_at AS TEXT), 1, 10) BETWEEN ? AND ?`)
       .get(tenantId, filters.today, filters.from, filters.to),
     db.prepare(`SELECT u.id, u.name, COUNT(DISTINCT a.client_id) AS total
       FROM appointments a JOIN clients c ON c.id = a.client_id AND c.tenant_id = a.tenant_id
@@ -225,22 +225,22 @@ export async function financialReport(tenantId, filters) {
       COALESCE(SUM(CASE WHEN l.type = 'payment' THEN l.credit_minor WHEN l.type = 'payment_reversal' THEN -l.debit_minor ELSE 0 END), 0) AS revenueMinor
       FROM patient_ledger_entries l ${financialJoins}
       WHERE ${range.sql} AND l.type IN ('payment','payment_reversal') AND s.id IS NOT NULL
-      GROUP BY s.id, s.name ORDER BY revenueMinor DESC, s.name`).all(...range.values),
+      GROUP BY s.id, s.name ORDER BY "revenueMinor" DESC, s.name`).all(...range.values),
     db.prepare(`SELECT u.id, u.name,
       COALESCE(SUM(CASE WHEN l.type = 'payment' THEN l.credit_minor WHEN l.type = 'payment_reversal' THEN -l.debit_minor ELSE 0 END), 0) AS revenueMinor
       FROM patient_ledger_entries l ${financialJoins}
       WHERE ${range.sql} AND l.type IN ('payment','payment_reversal') AND u.id IS NOT NULL
-      GROUP BY u.id, u.name ORDER BY revenueMinor DESC, u.name`).all(...range.values),
-    db.prepare(`SELECT SUBSTR(l.posted_at, 1, 10) AS period,
+      GROUP BY u.id, u.name ORDER BY "revenueMinor" DESC, u.name`).all(...range.values),
+    db.prepare(`SELECT SUBSTR(CAST(l.posted_at AS TEXT), 1, 10) AS period,
       COALESCE(SUM(CASE WHEN l.type = 'invoice' THEN l.debit_minor WHEN l.type = 'invoice_reversal' THEN -l.credit_minor ELSE 0 END), 0) AS invoicedMinor,
       COALESCE(SUM(CASE WHEN l.type = 'payment' THEN l.credit_minor WHEN l.type = 'payment_reversal' THEN -l.debit_minor ELSE 0 END), 0) AS paymentsMinor
       FROM patient_ledger_entries l ${financialJoins} WHERE ${range.sql}
-      GROUP BY SUBSTR(l.posted_at, 1, 10) ORDER BY period`).all(...range.values),
-    db.prepare(`SELECT SUBSTR(l.posted_at, 1, 7) AS period,
+      GROUP BY SUBSTR(CAST(l.posted_at AS TEXT), 1, 10) ORDER BY period`).all(...range.values),
+    db.prepare(`SELECT SUBSTR(CAST(l.posted_at AS TEXT), 1, 7) AS period,
       COALESCE(SUM(CASE WHEN l.type = 'invoice' THEN l.debit_minor WHEN l.type = 'invoice_reversal' THEN -l.credit_minor ELSE 0 END), 0) AS invoicedMinor,
       COALESCE(SUM(CASE WHEN l.type = 'payment' THEN l.credit_minor WHEN l.type = 'payment_reversal' THEN -l.debit_minor ELSE 0 END), 0) AS paymentsMinor
       FROM patient_ledger_entries l ${financialJoins} WHERE ${range.sql}
-      GROUP BY SUBSTR(l.posted_at, 1, 7) ORDER BY period`).all(...range.values),
+      GROUP BY SUBSTR(CAST(l.posted_at AS TEXT), 1, 7) ORDER BY period`).all(...range.values),
   ]);
   return {
     summary: { ...numbers(summaryRow), outstandingMinor: Number(balanceRow?.outstandingMinor || 0) },
@@ -256,11 +256,11 @@ export async function consentReport(tenantId, filters) {
   const appointment = appointmentWhere(tenantId, filters, { role: "admin" });
   const [summaryRow, missingRow] = await Promise.all([
     db.prepare(`SELECT
-      COALESCE(SUM(CASE WHEN pc.status = 'pending' AND (pc.expires_at IS NULL OR SUBSTR(pc.expires_at, 1, 10) >= ?) THEN 1 ELSE 0 END), 0) AS pending,
+      COALESCE(SUM(CASE WHEN pc.status = 'pending' AND (pc.expires_at IS NULL OR SUBSTR(CAST(pc.expires_at AS TEXT), 1, 10) >= ?) THEN 1 ELSE 0 END), 0) AS pending,
       COALESCE(SUM(CASE WHEN pc.status = 'signed' THEN 1 ELSE 0 END), 0) AS signed,
       COALESCE(SUM(CASE WHEN pc.status = 'declined' THEN 1 ELSE 0 END), 0) AS declined,
-      COALESCE(SUM(CASE WHEN pc.status = 'expired' OR (pc.status = 'pending' AND pc.expires_at IS NOT NULL AND SUBSTR(pc.expires_at, 1, 10) < ?) THEN 1 ELSE 0 END), 0) AS expired
-      FROM patient_consents pc WHERE pc.tenant_id = ? AND SUBSTR(pc.created_at, 1, 10) BETWEEN ? AND ?`)
+      COALESCE(SUM(CASE WHEN pc.status = 'expired' OR (pc.status = 'pending' AND pc.expires_at IS NOT NULL AND SUBSTR(CAST(pc.expires_at AS TEXT), 1, 10) < ?) THEN 1 ELSE 0 END), 0) AS expired
+      FROM patient_consents pc WHERE pc.tenant_id = ? AND SUBSTR(CAST(pc.created_at AS TEXT), 1, 10) BETWEEN ? AND ?`)
       .get(filters.today, filters.today, tenantId, filters.from, filters.to),
     db.prepare(`SELECT COUNT(DISTINCT a.id) AS total FROM appointments a
       WHERE ${appointment.sql} AND a.status = 'pending' AND a.date >= ?
@@ -270,7 +270,7 @@ export async function consentReport(tenantId, filters) {
             AND NOT EXISTS (SELECT 1 FROM patient_consents pc
               WHERE pc.tenant_id = a.tenant_id AND pc.template_id = ct.id
                 AND pc.client_id = a.client_id AND (pc.appointment_id = a.id OR pc.appointment_id IS NULL)
-                AND pc.status = 'signed' AND (pc.expires_at IS NULL OR SUBSTR(pc.expires_at, 1, 10) >= a.date)))`)
+                AND pc.status = 'signed' AND (pc.expires_at IS NULL OR SUBSTR(CAST(pc.expires_at AS TEXT), 1, 10) >= a.date)))`)
       .get(...appointment.values, filters.today),
   ]);
   return { summary: { ...numbers(summaryRow), upcomingMissingRequired: Number(missingRow?.total || 0) } };

@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "./config.js";
 import { hashPassword } from "./security.js";
+import { currentSchemaVersion } from "./schema-version.js";
+export { currentSchemaVersion } from "./schema-version.js";
 export { rowToUser } from "./shared/auth/user-mapper.js";
 import { rowToUser } from "./shared/auth/user-mapper.js";
 
@@ -80,6 +82,10 @@ class SqliteAdapter {
 
   exec(sql) {
     return this.client.exec(sql);
+  }
+
+  async close() {
+    this.client.close();
   }
 
   async transaction(callback) {
@@ -161,6 +167,11 @@ export const databaseEngine = isPostgres ? "postgresql" : "sqlite";
 export async function initDatabase() {
   if (isPostgres) await initPostgres();
   else await initSqlite();
+  await db.prepare(`
+    INSERT INTO schema_migrations (version, description)
+    VALUES (?, ?)
+    ON CONFLICT(version) DO NOTHING
+  `).run(currentSchemaVersion, "Sprint 2.6 production readiness");
   await seedDefaultTenant();
   await seedSettings(1);
 
@@ -173,6 +184,24 @@ export async function initDatabase() {
 export async function checkDatabaseConnection() {
   const row = await db.prepare("SELECT 1 AS ok").get();
   return row?.ok === 1 || row?.ok === "1";
+}
+
+export async function schemaVersionStatus() {
+  const rows = await db.prepare(`
+    SELECT version, description, applied_at AS appliedAt
+    FROM schema_migrations
+    ORDER BY applied_at, version
+  `).all();
+  const applied = rows.map((row) => String(row.version));
+  return {
+    current: currentSchemaVersion,
+    applied,
+    upToDate: applied.includes(currentSchemaVersion),
+  };
+}
+
+export async function closeDatabase() {
+  await db.close();
 }
 
 export async function assertProductionPlatformOwner() {
@@ -199,6 +228,34 @@ async function initSqlite() {
       billing_email TEXT DEFAULT '',
       trial_ends_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version TEXT PRIMARY KEY,
+      description TEXT NOT NULL DEFAULT '',
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS background_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('prepare_reminders','dispatch_reminders','expire_consents')),
+      dedupe_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','processing','completed','failed')),
+      payload TEXT NOT NULL DEFAULT '{}',
+      attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+      max_attempts INTEGER NOT NULL DEFAULT 3 CHECK(max_attempts BETWEEN 1 AND 10),
+      run_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      locked_at TEXT,
+      locked_by TEXT,
+      last_error TEXT NOT NULL DEFAULT '',
+      completed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS worker_heartbeats (
+      worker_id TEXT PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      heartbeat_at TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS subscriptions (
@@ -656,9 +713,12 @@ async function initSqlite() {
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_invoices_tenant_cycle ON billing_invoices(tenant_id, billing_cycle) WHERE billing_cycle <> ''");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_billing_invoices_tenant_status ON billing_invoices(tenant_id, status)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_clients_tenant_stage ON clients(tenant_id, stage)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_clients_tenant_active_updated ON clients(tenant_id, active, updated_at DESC)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_tasks_tenant_status ON crm_tasks(tenant_id, status)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_tasks_client ON crm_tasks(client_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_events_tenant ON crm_events(tenant_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_crm_events_tenant_client ON crm_events(tenant_id, client_id, id DESC)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_appointments_tenant_client_date ON appointments(tenant_id, client_id, active, date)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_visits_tenant_appointment ON clinical_visits(tenant_id, appointment_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_client_date ON clinical_visits(tenant_id, client_id, visit_date)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_clinical_visits_tenant_therapist ON clinical_visits(tenant_id, therapist_id)");
@@ -697,6 +757,12 @@ async function initSqlite() {
   await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_consents ON patient_consents(tenant_id, created_at, status, expires_at)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_ledger ON patient_ledger_entries(tenant_id, posted_at, type)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_reports_follow_up ON crm_tasks(tenant_id, type, status, due_date, assigned_to)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_claim ON background_jobs(status, run_at, id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_tenant_status ON background_jobs(tenant_id, status, run_at)");
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe
+    ON background_jobs(tenant_id, dedupe_key)
+  `);
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_tenant ON user_invitations(tenant_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_message_logs_tenant ON message_logs(tenant_id)");
@@ -709,7 +775,9 @@ async function initSqlite() {
 
 async function initPostgres() {
   const schema = readFileSync(new URL("./postgres/schema.sql", import.meta.url), "utf8");
-  await db.exec(schema);
+  await db.transaction(async (connection) => {
+    await connection.exec(schema);
+  });
 }
 
 async function seedDefaultTenant() {
