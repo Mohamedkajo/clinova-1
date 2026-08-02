@@ -1,54 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="${APP_NAME:-clinova}"
 APP_DIR="${APP_DIR:-/var/www/clinova}"
-BRANCH="${BRANCH:-main}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT:-3000}/api/health}"
+BRANCH="${BRANCH:-feat/sprint-2.7-release-candidate}"
 LOCK_DIR="${LOCK_DIR:-/tmp/clinova-deploy.lock}"
 
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "Another deployment is already running: $LOCK_DIR"
+  echo "Another deployment is already running."
   exit 1
 fi
-trap 'rm -rf "$LOCK_DIR"' EXIT
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 cd "$APP_DIR"
+test -f .env || { echo "Deployment stopped: .env is missing."; exit 1; }
+chmod 0600 .env
+set -a
+. ./.env
+set +a
 
-echo "==> Updating $APP_NAME from GitHub branch $BRANCH"
-echo "==> Current version: $(cat VERSION 2>/dev/null || node -p "require('./package.json').version")"
-echo "==> Current commit: $(git rev-parse --short HEAD 2>/dev/null || true)"
-
-echo "==> Creating database backup"
+echo "==> Validating current production configuration"
+npm run release:validate
+echo "==> Creating pre-fetch database and upload backups"
 npm run backup
+npm run backup:uploads
 
-echo "==> Fetching latest code"
+echo "==> Fetching approved branch"
 git fetch origin "$BRANCH" --tags
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
-
-echo "==> Installing production dependencies"
 npm ci --omit=dev
 
-echo "==> Running database initialization/migrations"
-npm run init-db
-
-echo "==> Reloading PM2 without manual downtime"
-npm exec pm2 startOrReload ecosystem.config.cjs --update-env
-npm exec pm2 save
-
-echo "==> New version: $(cat VERSION 2>/dev/null || node -p "require('./package.json').version")"
-echo "==> New commit: $(git rev-parse --short HEAD 2>/dev/null || true)"
-echo "==> Health check"
-for attempt in 1 2 3 4 5; do
-  if curl -fsS "$HEALTH_URL"; then
-    echo
-    echo "==> Deployment completed"
-    exit 0
-  fi
-  echo "Health check failed, retry $attempt/5"
-  sleep 3
-done
-
-echo "Deployment finished but health check failed: $HEALTH_URL"
-exit 1
+echo "==> Deploying release through the migration and health gate"
+npm run start:production
+echo "==> Deployed version $(node -p "require('./package.json').version") at commit $(git rev-parse --short HEAD)"

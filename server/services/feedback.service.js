@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { config } from "../config.js";
 import { sendWhatsAppText, whatsappFallbackUrl } from "../whatsapp.js";
 import {
   auditFeedback,
@@ -89,9 +90,8 @@ export async function createFeedback(user, body, req) {
 
   const token = randomUUID();
   const id = await createFeedbackRequest(user.tenantId, appointment.id, token);
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  const link = `${proto}://${host}/feedback.html?token=${encodeURIComponent(token)}`;
+  const origin = config.appUrl || "https://127.0.0.1:3000";
+  const link = `${origin.replace(/\/$/, "")}/feedback.html?token=${encodeURIComponent(token)}`;
   const message = `שלום ${appointment.clientName}, נשמח לקבל חוות דעת קצרה אחרי הטיפול: ${link}`;
   const settings = await clinicSettings(user.tenantId);
   const finalMessage = renderTemplate(settings.whatsappFeedbackTemplate || message, {

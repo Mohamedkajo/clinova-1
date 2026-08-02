@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { config } from "./config.js";
+import { assertProductionEnvironment } from "./production-config.js";
 
 const APP_PREFIX = "clinova";
 
@@ -45,9 +46,11 @@ function backupPostgres() {
 
   const backupDir = ensureBackupDir();
   const target = resolve(backupDir, `${APP_PREFIX}-postgres-${timestamp()}.dump`);
-  const result = spawnSync("pg_dump", ["--format=custom", "--no-owner", "--file", target, postgresDumpUrl()], {
+  const pgDump = process.env.PG_DUMP_BIN || "pg_dump";
+  const result = spawnSync(pgDump, ["--format=custom", "--no-owner", "--file", target, postgresDumpUrl()], {
     stdio: "pipe",
     encoding: "utf8",
+    shell: process.platform === "win32" && /\.cmd$/i.test(pgDump),
   });
 
   if (result.status !== 0) {
@@ -83,6 +86,7 @@ function cleanupBackups() {
 }
 
 export function createBackup({ reason = "manual" } = {}) {
+  assertProductionEnvironment();
   const startedAt = new Date();
   const target = config.databaseUrl ? backupPostgres() : backupSqlite();
   cleanupBackups();
@@ -97,7 +101,7 @@ export function createBackup({ reason = "manual" } = {}) {
     finishedAt: finishedAt.toISOString(),
   };
 
-  console.log(JSON.stringify(result));
+  console.log(JSON.stringify({ ...result, target: basename(result.target) }));
   return result;
 }
 

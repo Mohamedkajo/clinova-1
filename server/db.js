@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "./config.js";
-import { hashPassword } from "./security.js";
+import { hashPassword, verifyPassword } from "./security.js";
 import { currentSchemaVersion } from "./schema-version.js";
 export { currentSchemaVersion } from "./schema-version.js";
 export { rowToUser } from "./shared/auth/user-mapper.js";
@@ -174,6 +174,7 @@ export async function initDatabase() {
   `).run(currentSchemaVersion, "Sprint 2.6 production readiness");
   await seedDefaultTenant();
   await seedSettings(1);
+  await removeEmptyProductionDemoTenant();
 
   const userCount = (await db.prepare("SELECT COUNT(*) AS count FROM users").get()).count;
   if (Number(userCount) === 0 && process.env.NODE_ENV !== "production") await seedDatabase();
@@ -206,6 +207,19 @@ export async function closeDatabase() {
 
 export async function assertProductionPlatformOwner() {
   if (process.env.NODE_ENV !== "production") return;
+  const demoTenant = await db.prepare(`
+    SELECT id FROM tenants
+    WHERE LOWER(slug) = 'demo' OR LOWER(name) LIKE '%demo%'
+    LIMIT 1
+  `).get();
+  if (demoTenant) {
+    throw new Error("Production startup blocked: demo tenant data must be removed or renamed.");
+  }
+  const passwordRows = await db.prepare("SELECT password_hash AS passwordHash FROM users WHERE active = 1").all();
+  const knownDemoPasswords = ["ChangeMe123!", "ClinovaAlphaDemo!"];
+  if (passwordRows.some((row) => knownDemoPasswords.some((password) => verifyPassword(password, row.passwordHash)))) {
+    throw new Error("Production startup blocked: known demo credentials must be rotated.");
+  }
   const owner = await db.prepare(`
     SELECT id
     FROM users
@@ -215,6 +229,17 @@ export async function assertProductionPlatformOwner() {
   if (!owner) {
     throw new Error("Production startup blocked: no active Platform Owner exists.");
   }
+}
+
+async function removeEmptyProductionDemoTenant() {
+  if (process.env.NODE_ENV !== "production") return;
+  await db.prepare(`
+    UPDATE tenants
+    SET name = 'Clinova Clinic', slug = 'primary', status = 'active', updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1
+      AND LOWER(slug) = 'demo'
+      AND NOT EXISTS (SELECT 1 FROM users WHERE tenant_id = 1)
+  `).run();
 }
 
 async function initSqlite() {
@@ -784,7 +809,7 @@ async function seedDefaultTenant() {
   await db.prepare(`
     INSERT INTO tenants (id, name, slug, status, plan, billing_email)
     VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(slug) DO NOTHING
+    ON CONFLICT DO NOTHING
   `).run(1, "Clinova Demo Clinic", "demo", "trial", "starter", "");
 }
 

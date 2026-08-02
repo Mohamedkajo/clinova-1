@@ -1,5 +1,8 @@
 import { config } from "./config.js";
 import { createBackup } from "./backup.js";
+import { assertProductionEnvironment } from "./production-config.js";
+
+assertProductionEnvironment();
 
 let lastDailyRun = "";
 let lastIntervalRun = 0;
@@ -46,6 +49,7 @@ async function tick() {
 }
 
 console.log(`[backup-scheduler] enabled=${config.backup.enabled} dir=${config.backup.dir} retention=${config.backup.retention} time=${config.backup.time || "interval"} intervalHours=${config.backup.intervalHours}`);
+process.send?.("ready");
 
 if (config.backup.enabled && config.backup.runOnStart) {
   await runBackup("scheduler-start");

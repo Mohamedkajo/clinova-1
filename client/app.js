@@ -73,7 +73,7 @@ const state = {
   },
 };
 
-const APP_VERSION = "1.8.0-alpha.1";
+const APP_VERSION = "1.8.0-rc.1";
 
 let tr;
 let pageLabel;

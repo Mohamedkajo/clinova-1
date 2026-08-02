@@ -5,9 +5,13 @@ function normalizeIp(value) {
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
 }
 
+export function isTrustedProxy(req) {
+  return config.trustedProxyIps.includes(normalizeIp(req.socket?.remoteAddress || "unknown"));
+}
+
 export function resolveClientIp(req) {
   const remoteIp = normalizeIp(req.socket?.remoteAddress || "unknown");
-  if (!config.trustedProxyIps.includes(remoteIp)) return remoteIp;
+  if (!isTrustedProxy(req)) return remoteIp;
 
   const forwarded = String(req.headers["x-forwarded-for"] || "")
     .split(",")

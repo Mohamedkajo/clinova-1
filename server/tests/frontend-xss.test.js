@@ -41,7 +41,7 @@ test("safeSetText uses textContent instead of HTML parsing", () => {
 });
 
 test("public feedback rendering does not inject API values with innerHTML", async () => {
-  const source = await readFile(new URL("../../client/feedback.html", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../client/feedback.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /app\.innerHTML\s*=/);
   assert.match(source, /safeSetText\(details,/);
   assert.match(source, /app\.replaceChildren\(/);

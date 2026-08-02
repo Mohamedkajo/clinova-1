@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
 
 INSERT INTO tenants (id, name, slug, status, plan, billing_email)
 VALUES (1, 'Clinova Demo Clinic', 'demo', 'trial', 'starter', '')
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT DO NOTHING;
 SELECT setval(
   pg_get_serial_sequence('tenants', 'id'),
   GREATEST(COALESCE((SELECT MAX(id) FROM tenants), 1), 1),

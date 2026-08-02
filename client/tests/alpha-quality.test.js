@@ -47,6 +47,6 @@ test("alpha shell includes focus management, English appointment copy, and style
   assert.match(appSource, /Search appointments\.\.\./);
   assert.match(styles, /\.center-toast/);
   assert.match(styles, /\.form-message/);
-  assert.equal(packageInfo.version, "1.8.0-alpha.1");
+  assert.equal(packageInfo.version, "1.8.0-rc.1");
   assert.equal(version.trim(), packageInfo.version);
 });

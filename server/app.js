@@ -6,6 +6,8 @@ import { serveStatic } from "./shared/http/static-server.js";
 import { apiNotFound } from "./shared/http/api-not-found.js";
 import { checkRouteRateLimit } from "./shared/http/rate-limit.js";
 import { publicErrorResponse } from "./shared/http/public-error.js";
+import { applySecurityHeaders, handleCors } from "./shared/http/security-headers.js";
+import { assertProductionEnvironment } from "./production-config.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { clientsRoutes } from "./routes/clients.routes.js";
 import { appointmentsRoutes } from "./routes/appointments.routes.js";
@@ -269,6 +271,8 @@ async function handleApi(req, res, url) {
 
 const server = createServer(async (req, res) => {
   try {
+    applySecurityHeaders(req, res);
+    if (handleCors(req, res)) return;
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
       const rateLimit = checkRouteRateLimit(req, url.pathname);
@@ -287,10 +291,12 @@ const server = createServer(async (req, res) => {
   }
 });
 
+assertProductionEnvironment();
 await assertProductionPlatformOwner();
 
 server.listen(config.port, config.host, () => {
-  console.log(`Clinic system running on http://${config.host}:${config.port}`);
+  console.log("web_ready", { host: config.host, port: config.port });
+  process.send?.("ready");
 });
 
 let shuttingDown = false;

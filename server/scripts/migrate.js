@@ -2,10 +2,12 @@ import { existsSync, mkdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { basename, dirname, resolve } from "node:path";
 import { config } from "../config.js";
+import { assertProductionEnvironment } from "../production-config.js";
 
 let recoveryBackup = null;
 
 try {
+  assertProductionEnvironment();
   if (!config.databaseUrl && existsSync(config.databasePath)) {
     mkdirSync(config.backup.dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");

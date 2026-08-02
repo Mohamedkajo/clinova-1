@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
 import { closeDatabase, initDatabase } from "./db.js";
 import { heartbeatWorker, runWorkerCycle, safeJobError } from "./services/worker.service.js";
+import { assertProductionEnvironment } from "./production-config.js";
 
 const workerId = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 const startedAt = new Date();
@@ -53,9 +54,11 @@ async function shutdown(signal) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+assertProductionEnvironment();
 await initDatabase();
 console.log("worker_ready", { database: "connected" });
 await runCycle();
+process.send?.("ready");
 
 if (String(process.env.WORKER_ONCE || "false").toLowerCase() === "true") {
   await shutdown("WORKER_ONCE");

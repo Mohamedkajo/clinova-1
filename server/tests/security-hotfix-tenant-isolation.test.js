@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { createHttpClient, loginAs } from "./helpers/http-client.js";
 import { startTestServer } from "./helpers/test-server.js";
@@ -33,10 +33,12 @@ async function createProductionEnvironment() {
   const dataDir = join(root, "data");
   const uploadsDir = join(root, "uploads");
   const backupsDir = join(root, "backups");
+  const logsDir = join(root, "logs");
   await Promise.all([
     mkdir(dataDir, { recursive: true }),
     mkdir(uploadsDir, { recursive: true }),
     mkdir(backupsDir, { recursive: true }),
+    mkdir(logsDir, { recursive: true }),
   ]);
   return {
     root,
@@ -46,15 +48,23 @@ async function createProductionEnvironment() {
       NODE_ENV: "production",
       HOST: "127.0.0.1",
       PORT: "0",
+      APP_URL: "https://clinova.example.test",
       DATABASE_URL: "",
       DATABASE_PATH: join(dataDir, "clinova.sqlite"),
       UPLOAD_DIR: uploadsDir,
       BACKUP_DIR: backupsDir,
+      LOG_DIR: logsDir,
       BACKUP_ENABLED: "false",
       BACKUP_RUN_ON_START: "false",
       WHATSAPP_ENABLED: "false",
       COOKIE_SECURE: "true",
-      SESSION_SECRET: "clinova-production-bootstrap-test-secret",
+      TRUSTED_PROXY_IPS: "127.0.0.1",
+      UPLOAD_MAX_MB: "10",
+      BACKUP_RETENTION: "30",
+      WORKER_POLL_INTERVAL_MS: "5000",
+      WORKER_STALE_AFTER_MS: "120000",
+      WORKER_RETRY_BASE_MS: "5000",
+      SESSION_SECRET: "clinova-production-bootstrap-test-secret-that-is-long-enough",
     },
   };
 }
@@ -78,7 +88,7 @@ after(async () => {
   await Promise.all(productionTempRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("production initialization never creates demo users and requires an active platform owner", async () => {
+test("production initialization rejects SQLite before creating a database or demo users", async () => {
   const environment = await createProductionEnvironment();
   const initArgs = [
     "--input-type=module",
@@ -88,49 +98,12 @@ test("production initialization never creates demo users and requires an active 
 
   const blockedInit = await runNode(initArgs, environment.env);
   assert.notEqual(blockedInit.code, 0);
-  assert.match(blockedInit.output, /Production startup blocked: no active Platform Owner exists\./);
+  assert.match(blockedInit.output, /DATABASE_URL is required\./);
 
   const blockedStartup = await runNode(["server/app.js"], environment.env);
   assert.notEqual(blockedStartup.code, 0);
-  assert.match(blockedStartup.output, /Production startup blocked: no active Platform Owner exists\./);
-
-  const sqlite = new DatabaseSync(environment.databasePath);
-  try {
-    const users = sqlite.prepare("SELECT username, is_platform_owner AS platformOwner FROM users ORDER BY id").all();
-    assert.deepEqual(users, []);
-    sqlite.prepare(`
-      INSERT INTO users (
-        tenant_id, username, email, password_hash, name, title, role,
-        workdays, service_ids, is_platform_owner, active
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      1,
-      "production-owner",
-      "production-owner@example.test",
-      "scrypt:test-only:test-only",
-      "Production Owner",
-      "Platform owner",
-      "admin",
-      "[]",
-      "[]",
-      1,
-      1,
-    );
-  } finally {
-    sqlite.close();
-  }
-
-  const allowedInit = await runNode(initArgs, environment.env);
-  assert.equal(allowedInit.code, 0, allowedInit.output);
-
-  const verify = new DatabaseSync(environment.databasePath, { readOnly: true });
-  try {
-    assert.equal(verify.prepare("SELECT COUNT(*) AS count FROM users WHERE username = 'admin'").get().count, 0);
-    assert.equal(verify.prepare("SELECT COUNT(*) AS count FROM users WHERE is_platform_owner = 1 AND active = 1").get().count, 1);
-  } finally {
-    verify.close();
-  }
+  assert.match(blockedStartup.output, /DATABASE_URL is required\./);
+  assert.equal(existsSync(environment.databasePath), false);
 });
 
 test("foreign tenant references are rejected before appointment, gift, or consent writes", async () => {

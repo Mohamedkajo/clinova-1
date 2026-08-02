@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { assertProductionEnvironment } from "./production-config.js";
 
 const envFile = process.env.CLINOVA_SKIP_ENV_FILE === "true"
   ? ""
@@ -20,9 +21,13 @@ if (envFile && existsSync(envFile)) {
   }
 }
 
+// Validate before database adapters, sockets, or runtime files are created.
+assertProductionEnvironment();
+
 export const config = {
   port: Number(process.env.PORT || 3000),
   host: process.env.HOST || "0.0.0.0",
+  appUrl: process.env.APP_URL || "",
   databasePath: resolve(process.env.DATABASE_PATH || "./data/clinic.sqlite"),
   databaseUrl: process.env.DATABASE_URL || "",
   databaseSsl: String(process.env.DATABASE_SSL || "").toLowerCase() === "true",
@@ -39,6 +44,11 @@ export const config = {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean),
+  corsAllowedOrigins: [...new Set([
+    process.env.APP_URL || "",
+    ...String(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
+  ].map((item) => item.trim().replace(/\/$/, "")).filter(Boolean))],
+  logDir: resolve(process.env.LOG_DIR || "./logs"),
   backup: {
     enabled: String(process.env.BACKUP_ENABLED || "true").toLowerCase() !== "false",
     dir: resolve(process.env.BACKUP_DIR || "./backups"),
