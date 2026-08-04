@@ -32,3 +32,7 @@ export async function createPlatformTenant(user, body) {
   await auditPlatformTenantCreate(user, result.tenant.id, plan, status);
   return { status: 201, body: { tenants: await platformTenants(), tenant: result.tenant } };
 }
+
+export async function provisionInitialPlatformTenant(values, connection) {
+  return provisionPlatformTenant(values, connection);
+}

@@ -1,6 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./security.js";
 import { currentSchemaVersion } from "./schema-version.js";
@@ -9,6 +8,8 @@ export { rowToUser } from "./shared/auth/user-mapper.js";
 import { rowToUser } from "./shared/auth/user-mapper.js";
 
 const isPostgres = Boolean(config.databaseUrl);
+const sqliteModule = isPostgres ? null : await import("node:sqlite");
+const DatabaseSync = sqliteModule?.DatabaseSync;
 const pgModule = isPostgres ? await import("pg") : null;
 const Pool = pgModule?.default?.Pool;
 
@@ -164,7 +165,7 @@ applyPendingSqliteRestore();
 export const db = isPostgres ? new PostgresAdapter() : new SqliteAdapter();
 export const databaseEngine = isPostgres ? "postgresql" : "sqlite";
 
-export async function initDatabase() {
+export async function initDatabase({ requirePlatformOwner = true } = {}) {
   if (isPostgres) await initPostgres();
   else await initSqlite();
   await db.prepare(`
@@ -172,14 +173,16 @@ export async function initDatabase() {
     VALUES (?, ?)
     ON CONFLICT(version) DO NOTHING
   `).run(currentSchemaVersion, "Sprint 2.6 production readiness");
-  await seedDefaultTenant();
-  await seedSettings(1);
+  if (process.env.NODE_ENV !== "production") {
+    await seedDefaultTenant();
+    await seedSettings(1);
+  }
   await removeEmptyProductionDemoTenant();
 
   const userCount = (await db.prepare("SELECT COUNT(*) AS count FROM users").get()).count;
   if (Number(userCount) === 0 && process.env.NODE_ENV !== "production") await seedDatabase();
   await seedDevelopmentPlatformOwner();
-  await assertProductionPlatformOwner();
+  if (requirePlatformOwner) await assertProductionPlatformOwner();
 }
 
 export async function checkDatabaseConnection() {
@@ -827,7 +830,27 @@ function tenantSlug(value) {
     .slice(0, 48);
 }
 
-async function seedSettings(tenantId = 1) {
+export const defaultClinicSettingKeys = Object.freeze([
+  "clinicName",
+  "logoUrl",
+  "currency",
+  "workStart",
+  "workEnd",
+  "workDays",
+  "whatsappTemplate",
+  "whatsappEnabled",
+  "whatsappMode",
+  "whatsappBusinessPhone",
+  "whatsappFeedbackTemplate",
+  "whatsappGiftTemplate",
+  "appointmentRemindersEnabled",
+  "reminderTimingHours",
+  "sameDayReminderEnabled",
+  "sameDayReminderTime",
+  "reminderChannel",
+]);
+
+async function seedSettings(tenantId = 1, connection = db) {
   const defaults = {
     clinicName: "Clinova",
     logoUrl: "/logo.svg",
@@ -849,7 +872,7 @@ async function seedSettings(tenantId = 1) {
     sameDayReminderTime: "08:00",
     reminderChannel: "whatsapp",
   });
-  const insert = db.prepare(`
+  const insert = connection.prepare(`
     INSERT INTO clinic_settings (tenant_id, key, value) VALUES (?, ?, ?)
     ON CONFLICT(tenant_id, key) DO NOTHING
   `);
@@ -997,9 +1020,10 @@ export async function findLoginUser(identifier, tenant = "") {
   `).get(normalized, normalized);
 }
 
-export async function provisionTenant({ clinicName, slug, ownerName, email, password }) {
+export async function provisionTenant({ clinicName, slug, ownerName, username, email, password }, connection = db) {
   const name = String(clinicName || "").trim();
   const normalizedEmail = normalizeEmail(email);
+  const normalizedUsername = String(username || normalizedEmail).trim();
   const normalizedSlug = tenantSlug(slug || name);
   const owner = String(ownerName || "Owner").trim();
   const secret = String(password || "");
@@ -1019,13 +1043,18 @@ export async function provisionTenant({ clinicName, slug, ownerName, email, pass
     error.status = 400;
     throw error;
   }
+  if (normalizedUsername.length < 2) {
+    const error = new Error("Username is required.");
+    error.status = 400;
+    throw error;
+  }
   if (secret.length < 8) {
     const error = new Error("Password must be at least 8 characters.");
     error.status = 400;
     throw error;
   }
 
-  const existing = await db.prepare("SELECT id FROM tenants WHERE slug = ?").get(normalizedSlug);
+  const existing = await connection.prepare("SELECT id FROM tenants WHERE slug = ?").get(normalizedSlug);
   if (existing) {
     const error = new Error("Tenant slug already exists.");
     error.status = 409;
@@ -1033,30 +1062,30 @@ export async function provisionTenant({ clinicName, slug, ownerName, email, pass
   }
 
   const trialEndsAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
-  const tenantResult = await db.prepare(`
+  const tenantResult = await connection.prepare(`
     INSERT INTO tenants (name, slug, status, plan, billing_email, trial_ends_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(name, normalizedSlug, "trial", "starter", normalizedEmail, trialEndsAt);
   const tenantId = Number(tenantResult.lastInsertRowid);
 
-  await db.prepare(`
+  await connection.prepare(`
     INSERT INTO subscriptions (tenant_id, provider, status, plan, current_period_end)
     VALUES (?, ?, ?, ?, ?)
   `).run(tenantId, "manual", "trial", "starter", trialEndsAt);
-  await seedSettings(tenantId);
-  await db.prepare("UPDATE clinic_settings SET value = ? WHERE tenant_id = ? AND key = ?").run(name, tenantId, "clinicName");
+  await seedSettings(tenantId, connection);
+  await connection.prepare("UPDATE clinic_settings SET value = ? WHERE tenant_id = ? AND key = ?").run(name, tenantId, "clinicName");
 
-  const userResult = await db.prepare(`
+  const userResult = await connection.prepare(`
     INSERT INTO users (tenant_id, username, email, password_hash, name, title, role, workdays, service_ids, active)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(tenantId, normalizedEmail, normalizedEmail, hashPassword(secret), owner, "Owner", "admin", "[]", "[]", 1);
-  const user = await db.prepare("SELECT * FROM users WHERE id = ? AND tenant_id = ?").get(userResult.lastInsertRowid, tenantId);
-  const tenant = await db.prepare("SELECT id, name, slug, status, plan, billing_email AS billingEmail, trial_ends_at AS trialEndsAt FROM tenants WHERE id = ?").get(tenantId);
+  `).run(tenantId, normalizedUsername, normalizedEmail, hashPassword(secret), owner, "Owner", "admin", "[]", "[]", 1);
+  const user = await connection.prepare("SELECT * FROM users WHERE id = ? AND tenant_id = ?").get(userResult.lastInsertRowid, tenantId);
+  const tenant = await connection.prepare("SELECT id, name, slug, status, plan, billing_email AS billingEmail, trial_ends_at AS trialEndsAt FROM tenants WHERE id = ?").get(tenantId);
   return { tenant, user: rowToUser(user) };
 }
 
-export async function audit(userId, action, entity, entityId, details = {}) {
+export async function audit(userId, action, entity, entityId, details = {}, connection = db) {
   const tenantId = details?.tenantId || 1;
-  await db.prepare("INSERT INTO audit_log (tenant_id, user_id, action, entity, entity_id, details) VALUES (?, ?, ?, ?, ?, ?)")
+  await connection.prepare("INSERT INTO audit_log (tenant_id, user_id, action, entity, entity_id, details) VALUES (?, ?, ?, ?, ?, ?)")
     .run(tenantId, userId || null, action, entity, entityId || null, JSON.stringify(details));
 }

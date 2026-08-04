@@ -21,7 +21,22 @@ set +a
 npm run release:validate
 ```
 
-At least one active Platform Owner must already exist, every known demo password must be rotated, and no demo tenant may remain. Production startup fails otherwise.
+Every known demo password must be rotated and no demo tenant may remain. Production runtime startup still refuses to run unless an active Platform Owner exists.
+
+## First production initialization
+
+On a brand-new PostgreSQL installation, inject the ten `INIT_*` values from the inventory in `.env.production.example` for the initialization command only. Do not save them in `.env`, shell history, PM2 configuration, or logs. Run this exact order:
+
+```bash
+npm ci
+npm run release:validate
+npm run db:migrate
+npm run production:init
+npm run db:verify
+npm run start:production
+```
+
+`production:init` is a CLI-only, one-time command. It creates the first Platform Owner and provisions the first clinic administrator, subscription, and settings through the application architecture in one PostgreSQL transaction. It refuses an existing Platform Owner, conflicts, or partial state; a second run returns `PRODUCTION_ALREADY_INITIALIZED`. Remove all `INIT_*` values from the process environment immediately after the command. Never run it on an established installation.
 
 ## Deploy
 

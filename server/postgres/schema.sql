@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+SELECT setval(
+  pg_get_serial_sequence('tenants', 'id'),
+  GREATEST(COALESCE((SELECT MAX(id) FROM tenants), 1), 1),
+  EXISTS (SELECT 1 FROM tenants)
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version TEXT PRIMARY KEY,
   description TEXT NOT NULL DEFAULT '',
@@ -83,15 +89,6 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
   billing_cycle TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-INSERT INTO tenants (id, name, slug, status, plan, billing_email)
-VALUES (1, 'Clinova Demo Clinic', 'demo', 'trial', 'starter', '')
-ON CONFLICT DO NOTHING;
-SELECT setval(
-  pg_get_serial_sequence('tenants', 'id'),
-  GREATEST(COALESCE((SELECT MAX(id) FROM tenants), 1), 1),
-  true
 );
 
 CREATE TABLE IF NOT EXISTS users (

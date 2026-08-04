@@ -8,17 +8,20 @@ Required startup order:
 
 1. Verify PostgreSQL and protected `.env` availability.
 2. Validate configuration with `npm run release:validate`.
-3. Create and verify the upload archive and PostgreSQL custom-format backup.
-4. Run transactional migration and schema verification.
-5. Gracefully start/reload PM2 processes and save the process list.
-6. Pass public health plus internal database, worker, queue, failed-job, and disk checks.
-7. Validate HTTPS and the end-to-end role workflows before opening traffic.
+3. Create and verify the upload archive and PostgreSQL custom-format backup when upgrading.
+4. Run transactional migration.
+5. On a brand-new installation only, run `npm run production:init` with ephemeral `INIT_*` values.
+6. Verify the schema, gracefully start/reload PM2 processes, and save the process list.
+7. Pass public health plus internal database, worker, queue, failed-job, and disk checks.
+8. Validate HTTPS and the end-to-end role workflows before opening traffic.
 
 `npm run start:production` performs steps 2–6 and stops before reload if backup or migration fails. The web process, worker, and backup scheduler independently validate production configuration and refuse SQLite, insecure cookies, HTTP application URLs, weak secrets, missing proxy configuration, or unsafe storage paths.
 
 ## Environment and secrets
 
 Use `.env.production.example` as the variable inventory. Store `.env` as mode `0600`, owned by the service account, or inject variables from an approved secret manager. Never place credentials in Git, PM2 configuration, shell history, monitoring output, or application logs. Use TLS certificate verification for remote PostgreSQL.
+
+The `INIT_*` inventory is for the one-time CLI bootstrap only. Inject those values directly for `npm run production:init` and remove them immediately afterward; do not persist them in `.env`. Initialization uses the current password policy and refuses demo/default credentials, duplicate Platform Owners, conflicting identities, and partial clinic state.
 
 `APP_URL` and allowed CORS origins must be HTTPS. `TRUSTED_PROXY_IPS` must contain only the reverse-proxy addresses. Set `HOST=127.0.0.1`; do not expose Node directly. The application trusts forwarded client addresses only from configured proxy IPs and builds external links from `APP_URL`.
 
@@ -36,6 +39,19 @@ Recommended paths:
 Backups must also be replicated to encrypted storage outside the application host. Default retention is 30 recovery points; keep daily backups for 30 days and a monthly verified copy according to clinic policy.
 
 ## Database deployment and restore
+
+For the first installation, use this exact order:
+
+```bash
+npm ci
+npm run release:validate
+npm run db:migrate
+npm run production:init
+npm run db:verify
+npm run start:production
+```
+
+The migration CLI may prepare an empty PostgreSQL schema before the first owner exists. The web server and worker retain the active Platform Owner startup gate. `production:init` is not an upgrade or repair command and exposes no HTTP endpoint.
 
 ```bash
 npm run backup

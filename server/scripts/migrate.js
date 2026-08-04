@@ -23,7 +23,9 @@ try {
   }
 
   const { closeDatabase, databaseEngine, initDatabase, schemaVersionStatus } = await import("../db.js");
-  await initDatabase();
+  // Migrations must be able to prepare a brand-new production database before
+  // the one-time Platform Owner initialization. Runtime startup keeps the gate.
+  await initDatabase({ requirePlatformOwner: false });
   const migrations = await schemaVersionStatus();
   if (!migrations.upToDate) throw new Error("Schema version verification failed.");
   console.log(JSON.stringify({
