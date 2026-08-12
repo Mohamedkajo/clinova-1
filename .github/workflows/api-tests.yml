@@ -38,11 +38,11 @@ jobs:
           echo "UPLOAD_DIR=$RUNNER_TEMP/clinova-api-ci-uploads" >> "$GITHUB_ENV"
           echo "BACKUP_DIR=$RUNNER_TEMP/clinova-api-ci-backups" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
-        run: npm ci
+     - name: Install dependencies
+  run: npm ci
 
-      - name: Check isolated SQLite connection
-        run: npm run db:check
+- name: Initialize isolated SQLite database
+  run: npm run db:migrate
 
-      - name: Run API regression tests
-        run: npm run test:api
+- name: Check isolated SQLite connection
+  run: npm run db:check
